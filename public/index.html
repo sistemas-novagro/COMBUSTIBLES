@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>NOVAGRO - Combustibles</title>
+<style>
+  :root {
+    --verde-oscuro: #1c4d33;
+    --verde: #2e7d4f;
+    --verde-claro: #e8f2ec;
+    --dorado: #d9a441;
+    --amarillo: #e8b923;
+    --naranja: #d9762e;
+    --rojo: #c0392b;
+    --texto: #2b2b2b;
+    --entrada-bg: #e5f6ea;
+    --entrada-borde: #2e9e52;
+    --salida-bg: #fdece0;
+    --salida-borde: #d9762e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    margin: 0; padding: 0 0 40px;
+    background: var(--verde-claro);
+    color: var(--texto);
+  }
+  header {
+    display: flex; align-items: center; gap: 16px;
+    background: linear-gradient(135deg, var(--verde-oscuro), var(--verde));
+    padding: 18px 30px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  header img { width: 56px; height: 56px; border-radius: 50%; box-shadow: 0 0 0 3px var(--dorado); }
+  header h1 { color: white; margin: 0; font-size: 1.3rem; }
+  header span { color: var(--dorado); display: block; font-size: 0.8rem; font-weight: normal; margin-top: 2px; }
+
+  .layout { display: flex; max-width: 1250px; margin: 20px auto; gap: 20px; padding: 0 20px; align-items: flex-start; }
+
+  .sidebar {
+    width: 230px; flex-shrink: 0;
+    background: white; border-radius: 10px; padding: 18px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+    border-top: 3px solid var(--verde);
+    position: sticky; top: 20px;
+  }
+  .sidebar h3 { margin-top: 0; color: var(--verde-oscuro); font-size: 1rem; }
+  .sidebar label { display: block; margin-top: 12px; font-weight: bold; font-size: 0.85rem; color: var(--verde-oscuro); }
+  .sidebar select, .sidebar input { width: 100%; padding: 7px; margin-top: 4px; border: 1px solid #d0d8d3; border-radius: 5px; font-size: 0.85rem; }
+  .sidebar button { width: 100%; margin-top: 14px; padding: 9px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease; }
+  #btnAplicarFiltros { background: var(--verde); color: white; }
+  #btnAplicarFiltros:hover { background: var(--verde-oscuro); transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+  #btnLimpiarFiltros { background: #eee; color: var(--texto); margin-top: 6px; }
+  #btnLimpiarFiltros:hover { background: #ddd; }
+
+  .leyenda { margin-top: 16px; padding-top: 14px; border-top: 1px solid #eee; font-size: 0.78rem; color: #666; }
+  .leyenda div { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .punto { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+  .main { flex: 1; min-width: 0; }
+
+  .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab-btn {
+    position: relative; overflow: hidden;
+    padding: 10px 18px; border: none; border-radius: 8px 8px 0 0;
+    background: #ddd; color: #555; font-weight: bold; cursor: pointer;
+    border-bottom: 4px solid transparent;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  }
+  .tab-btn::before {
+    content: ''; position: absolute; top: 0; left: -75%; width: 50%; height: 100%;
+    background: linear-gradient(120deg, transparent, rgba(255,255,255,0.7), transparent);
+    transform: skewX(-20deg); transition: left 0.5s ease;
+  }
+  .tab-btn:hover::before { left: 125%; }
+  .tab-btn:hover { transform: translateY(-4px); }
+  .tab-btn.active { background: white; box-shadow: 0 -1px 6px rgba(0,0,0,0.08); }
+  .tab-btn[data-tab="resumen"]:hover { box-shadow: 0 4px 14px rgba(46,125,79,0.45); color: var(--verde); }
+  .tab-btn[data-tab="resumen"].active { border-bottom-color: var(--verde); color: var(--verde); }
+  .tab-btn[data-tab="registros"]:hover { box-shadow: 0 4px 14px rgba(232,185,35,0.5); color: #a3800f; }
+  .tab-btn[data-tab="registros"].active { border-bottom-color: var(--amarillo); color: #a3800f; }
+  .tab-btn[data-tab="importar"]:hover { box-shadow: 0 4px 14px rgba(217,118,46,0.45); color: var(--naranja); }
+  .tab-btn[data-tab="importar"].active { border-bottom-color: var(--naranja); color: var(--naranja); }
+  .tab-btn[data-tab="informe"]:hover { box-shadow: 0 4px 14px rgba(192,57,43,0.45); color: var(--rojo); }
+  .tab-btn[data-tab="informe"].active { border-bottom-color: var(--rojo); color: var(--rojo); }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); margin-bottom: 20px; }
+
+  .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .metric-card {
+    background: white; border-radius: 10px; padding: 18px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.08); border-left: 5px solid var(--verde);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .metric-card:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
+  .metric-card.dorado { border-left-color: var(--amarillo); }
+  .metric-card.naranja { border-left-color: var(--naranja); }
+  .metric-card.rojo { border-left-color: var(--rojo); }
+  .metric-card.entrada { border-left-color: var(--entrada-borde); }
+  .metric-card .valor { font-size: 1.7rem; font-weight: bold; color: var(--verde-oscuro); }
+  .metric-card .etiqueta { font-size: 0.85rem; color: #777; margin-top: 4px; }
+
+  label { display: block; margin-top: 10px; font-weight: bold; color: var(--verde-oscuro); }
+  input[type=text], input[type=date], input[type=number], input[type=file] { width: 100%; padding: 9px; margin-top: 4px; border: 1px solid #d0d8d3; border-radius: 5px; }
+
+  button.accion {
+    margin-top: 16px; padding: 10px 22px; background: var(--verde); color: white;
+    border: none; border-radius: 6px; cursor: pointer; font-weight: bold;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  button.accion:hover, #btnImportar:hover, #btnImportarHistorico:hover, #btnInforme:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+  button.accion:hover { background: var(--verde-oscuro); }
+  #btnImportar { background: var(--naranja); }
+  #btnImportar:hover { background: #b8611f; }
+  #btnImportarHistorico { background: var(--rojo); }
+  #btnImportarHistorico:hover { background: #96291d; }
+  #btnInforme { background: var(--rojo); }
+  #btnInforme:hover { background: #96291d; }
+
+  table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
+  th, td { padding: 9px 10px; text-align: left; border-bottom: 1px solid #eee; font-size: 0.88rem; }
+  th { background: var(--verde-oscuro); color: white; }
+
+  .fila-mes-header td {
+    background: var(--verde-oscuro); color: white; font-weight: bold;
+    font-size: 0.82rem; padding: 6px 10px; letter-spacing: 0.5px;
+  }
+  .mes-par { background: #fbfdfb; }
+  .mes-impar { background: #f3f8f5; }
+
+  tr.fila-entrada td:first-child { border-left: 4px solid var(--entrada-borde); }
+  tr.fila-salida td:first-child { border-left: 4px solid var(--salida-borde); }
+  tr.fila-entrada:hover td { background: var(--entrada-bg) !important; }
+  tr.fila-salida:hover td { background: var(--salida-bg) !important; }
+
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 0.75rem; font-weight: bold;
+  }
+  .badge-entrada { background: var(--entrada-bg); color: var(--entrada-borde); }
+  .badge-salida { background: var(--salida-bg); color: var(--salida-borde); }
+
+  .paginacion { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 14px; }
+  .paginacion button {
+    padding: 7px 16px; border: none; border-radius: 6px; background: var(--verde);
+    color: white; font-weight: bold; cursor: pointer;
+  }
+  .paginacion button:disabled { background: #ccc; cursor: not-allowed; }
+  .paginacion span { font-size: 0.85rem; color: var(--verde-oscuro); font-weight: bold; }
+
+  .btn-fila { padding: 4px 10px; border: none; border-radius: 5px; font-size: 0.78rem; font-weight: bold; cursor: pointer; margin-right: 4px; }
+  .btn-editar { background: var(--dorado); color: white; }
+  .btn-editar:hover { background: var(--dorado-oscuro, #b8842a); }
+  .btn-eliminar { background: var(--rojo); color: white; }
+  .btn-eliminar:hover { background: #96291d; }
+  #formCombustible.editando { border: 2px solid var(--dorado); }
+  #avisoEdicion { display: none; background: #fff8e8; border-left: 4px solid var(--dorado); padding: 10px 14px; border-radius: 6px; margin-bottom: 10px; font-size: 0.85rem; }
+
+  .info-carga { text-align: center; padding: 30px; color: #888; font-style: italic; }
+
+  /* ---- Panel de Saldo y Consumo por Campo (con efecto espejado automático) ---- */
+  .saldo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .saldo-card {
+    position: relative; overflow: hidden; border-radius: 14px; padding: 20px;
+    color: white; box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .saldo-card:hover { transform: translateY(-5px) scale(1.015); box-shadow: 0 8px 22px rgba(0,0,0,0.28); }
+  .saldo-card::after {
+    content: ''; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
+    background: linear-gradient(120deg, transparent, rgba(255,255,255,0.5), transparent);
+    transform: skewX(-20deg);
+    animation: brilloAuto 4s ease-in-out infinite;
+  }
+  @keyframes brilloAuto {
+    0%   { left: -60%; }
+    45%  { left: 130%; }
+    100% { left: 130%; }
+  }
+  .saldo-card h4 { margin: 0 0 4px; font-size: 1.05rem; text-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+  .saldo-card .sub { font-size: 0.72rem; opacity: 0.85; margin-bottom: 14px; }
+  .saldo-card .saldo-valor { font-size: 2rem; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+  .saldo-card .saldo-label { font-size: 0.72rem; opacity: 0.9; margin-bottom: 14px; }
+  .saldo-metric { display: flex; justify-content: space-between; font-size: 0.82rem; margin-top: 7px; padding-top: 7px; border-top: 1px solid rgba(255,255,255,0.28); position: relative; z-index: 1; }
+  .saldo-metric span:last-child { font-weight: bold; }
+
+  .saldo-card.c1 { background: linear-gradient(135deg, #2e9e52, #1c4d33); }
+  .saldo-card.c2 { background: linear-gradient(135deg, #e8b923, #a8761e); }
+  .saldo-card.c3 { background: linear-gradient(135deg, #e8822e, #a8541d); }
+  .saldo-card.c4 { background: linear-gradient(135deg, #d9475a, #8a1f2b); }
+  .saldo-card.c5 { background: linear-gradient(135deg, #9b59b6, #5b2c6f); }
+  .saldo-card.c6 { background: linear-gradient(135deg, #2e86c1, #1a4e73); }
+
+  .campo-saldo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .campo-saldo-card {
+    position: relative; overflow: hidden;
+    border-radius: 14px; padding: 18px 20px; color: white;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .campo-saldo-card:hover { transform: translateY(-5px) scale(1.015); box-shadow: 0 8px 22px rgba(0,0,0,0.28); }
+  .campo-saldo-card::after {
+    content: ''; position: absolute; top: 0; left: -60%; width: 45%; height: 100%;
+    background: linear-gradient(120deg, transparent, rgba(255,255,255,0.55), transparent);
+    transform: skewX(-20deg);
+    animation: brilloAuto 3.2s ease-in-out infinite;
+  }
+  @keyframes brilloAuto {
+    0%   { left: -60%; }
+    45%  { left: 130%; }
+    100% { left: 130%; }
+  }
+  .campo-saldo-card h4 {
+    margin: 0 0 12px 0; font-size: 1.05rem; text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .campo-saldo-card .fila-metrica {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.22); font-size: 0.85rem;
+  }
+  .campo-saldo-card .fila-metrica:last-child { border-bottom: none; }
+  .campo-saldo-card .fila-metrica .val { font-weight: bold; font-size: 1rem; }
+  .campo-saldo-card .saldo-principal { font-size: 1.9rem; font-weight: bold; margin-bottom: 2px; text-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+  .campo-saldo-card .saldo-label { font-size: 0.75rem; opacity: 0.9; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  #informe { background: white; padding: 20px; border-radius: 10px; margin-top: 16px; white-space: pre-wrap; display: none; border-left: 4px solid var(--rojo); line-height: 1.5; }
+  #resultadoImportar, #resultadoHistorico { margin-top: 10px; font-weight: bold; color: var(--verde-oscuro); }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="logo.png" alt="Logo NOVAGRO">
+  <h1>Control de Combustibles<span>NOVAGRO S.A. · Cañada Rosquín</span></h1>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <h3>Filtros</h3>
+    <label>Campo</label>
+    <select id="filtroCampo"><option value="">Todos</option></select>
+
+    <label>Vehículo / Cisterna</label>
+    <select id="filtroVehiculo"><option value="">Todos</option></select>
+
+    <label>Tipo</label>
+    <select id="filtroTipo">
+      <option value="">Todos</option>
+      <option value="entrada">Solo entradas</option>
+      <option value="salida">Solo salidas</option>
+    </select>
+
+    <label>Desde</label>
+    <input type="date" id="filtroDesde">
+
+    <label>Hasta</label>
+    <input type="date" id="filtroHasta">
+
+    <button id="btnAplicarFiltros">Aplicar filtros</button>
+    <button id="btnLimpiarFiltros">Limpiar</button>
+
+    <div class="leyenda">
+      <div><span class="punto" style="background:var(--entrada-borde);"></span> Entrada (carga a cisterna)</div>
+      <div><span class="punto" style="background:var(--salida-borde);"></span> Salida (consumo)</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="resumen">🟢 Resumen</button>
+      <button class="tab-btn" data-tab="registros">🟡 Registros</button>
+      <button class="tab-btn" data-tab="importar">🟠 Importar</button>
+      <button class="tab-btn" data-tab="informe">🔴 Informe</button>
+    </nav>
+
+    <section id="tab-resumen" class="tab-panel active">
+      <h3 style="margin-top:0; color:var(--verde-oscuro);">⛽ Saldo disponible — al día de hoy</h3>
+      <div class="saldo-grid" id="saldosPorCampo"></div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">🔧 Consumo por maquinaria / vehículo (últimos 30 días)</h3>
+        <table>
+          <thead><tr><th>Maquinaria / Vehículo</th><th>Campo</th><th>Litros</th><th>Cargas</th></tr></thead>
+          <tbody id="tablaPorMaquinaria30"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">📅 Consumo mensual — 2026</h3>
+        <table>
+          <thead><tr><th>Mes</th><th>PLANTA</th><th>LA LONJA</th><th>PALMAR CHICO</th><th>Total</th></tr></thead>
+          <tbody id="tablaMensual2026"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="tab-registros" class="tab-panel">
+      <div class="card">
+        <h3 style="margin-top:0;">Carga manual</h3>
+        <div id="avisoEdicion">✏️ Estás editando un registro existente. <button type="button" id="btnCancelarEdicion" style="margin-left:8px; padding:3px 10px; border:none; border-radius:5px; cursor:pointer;">Cancelar edición</button></div>
+        <form id="formCombustible">
+          <label>Fecha</label>
+          <input type="date" id="fecha" required>
+          <label>Cisterna / Labor</label>
+          <input type="text" id="cisterna" placeholder='Ej: "Carga de combustible en Cisterna" o "Combustible Ganadería"' required>
+          <label>Campo</label>
+          <input type="text" id="campo" required>
+          <label>Vehículo</label>
+          <input type="text" id="vehiculo" required>
+          <label>Litros cargados</label>
+          <input type="number" id="litrosCargados" step="0.1" required>
+          <label>Litros consumidos</label>
+          <input type="number" id="litrosConsumidos" step="0.1" required>
+          <button type="submit" class="accion" id="btnGuardarCarga">Guardar carga</button>
+        </form>
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>Fecha</th><th>Tipo</th><th>Campo</th><th>Vehículo/Cisterna</th><th>Litros</th><th>Costo</th><th>Acciones</th></tr>
+        </thead>
+        <tbody id="tablaBody"></tbody>
+      </table>
+
+      <div class="paginacion">
+        <button id="btnPagAnterior">← Anterior</button>
+        <span id="infoPagina">Página 1</span>
+        <button id="btnPagSiguiente">Siguiente →</button>
+      </div>
+    </section>
+
+    <section id="tab-importar" class="tab-panel">
+      <div class="card">
+        <h3 style="margin-top:0;">Importar Excel de Physis</h3>
+        <input type="file" id="inputExcel" accept=".xlsx,.xls">
+        <button id="btnImportar" class="accion">Importar</button>
+        <p id="resultadoImportar"></p>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Importar histórico (Informe Cisternas y Campos)</h3>
+        <p style="color:#777; font-size:0.85rem;">Este es el archivo con las hojas PLANTA, PALMAR CHICO, LA LONJA, SELENE y ESTACIONES.</p>
+        <input type="file" id="inputHistorico" accept=".xlsx,.xls">
+        <button id="btnImportarHistorico" class="accion">Importar histórico</button>
+        <p id="resultadoHistorico"></p>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Limpiar nombres de vehículos</h3>
+        <p style="color:#777; font-size:0.85rem;">Aplica el diccionario de alias (MF RETRO → Retro CMF03, etc.) a todo lo ya cargado. Usalo cada vez que te confirme que agregué una equivalencia nueva.</p>
+        <button id="btnNormalizar" class="accion" style="background:var(--dorado);">Normalizar nombres</button>
+        <p id="resultadoNormalizar"></p>
+      </div>
+    </section>
+
+    <section id="tab-informe" class="tab-panel">
+      <div class="card">
+        <p>Genera un informe con Claude a partir de los <strong>registros actualmente filtrados</strong> (usá los filtros de la izquierda antes de generar si querés acotarlo a un campo, vehículo o período).</p>
+        <button id="btnInforme" class="accion">🧠 Generar informe con Claude</button>
+      </div>
+      <div id="informe"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+  // ---------- Estado ----------
+  let todosLosDatos = [];     // datos crudos tal cual vienen del servidor
+  let datosEnriquecidos = []; // datos + tipo/campoNormalizado precalculados (se hace 1 sola vez por dataset)
+  let datosFiltrados = [];    // subconjunto visible según filtros
+
+  const FILAS_POR_PAGINA = 50;
+  let paginaActual = 1;
+
+  // ---------- Utilidades ----------
+  function normalizarCampo(campo) {
+    if (!campo) return 'Sin especificar';
+    const c = campo.trim().toUpperCase();
+    if (c.includes('DEPOSITO PRINCIPAL') || c.includes('DEPÓSITO PRINCIPAL')) return 'PLANTA';
+    return campo.trim();
+  }
+
+  function esEntradaRaw(cisternaTexto) {
+    return (cisternaTexto || '').toLowerCase().includes('carga de combustible en cisterna');
+  }
+
+  // Precalcula una sola vez por registro (evita recalcular en cada render/filtro)
+  function enriquecer(datos) {
+    return datos.map(d => ({
+      ...d,
+      _tipo: esEntradaRaw(d.cisterna) ? 'entrada' : 'salida',
+      _campoNorm: normalizarCampo(d.campo),
+      _litros: Number(d.litrosCargados) || 0,
+      _costo: Number(d.costo) || 0,
+    }));
+  }
+
+  // ---------- Saldo y consumo por campo (siempre con TODOS los datos, no con los filtros aplicados) ----------
+  let saldosReferencia = {};
+
+  // Solo estos tres campos tienen cisterna propia y nos interesa mostrar acá
+  const CAMPOS_CON_PANEL = ['PLANTA', 'LA LONJA', 'PALMAR CHICO'];
+
+  // Promedios siempre sobre los últimos 30 días corridos (no por mes calendario)
+  function calcularPromedios30Dias(datosCampo) {
+    const hoy = new Date();
+    const hoyStr = hoy.toISOString().slice(0, 10);
+    const limite = new Date(hoy);
+    limite.setDate(limite.getDate() - 30);
+    const limiteStr = limite.toISOString().slice(0, 10);
+
+    const total30 = datosCampo
+      .filter(d => d._tipo === 'salida' && d.fecha >= limiteStr && d.fecha <= hoyStr)
+      .reduce((s, d) => s + d._litros, 0);
+
+    const diario = total30 / 30;
+    const semanal = diario * 7;
+    const mensual = total30; // el total de 30 días ES la estimación mensual
+
+    return { diario, semanal, mensual };
+  }
+
+  function calcularSaldo(campo, datosCampo) {
+    const ref = saldosReferencia[campo];
+    if (!ref) return null; // sin punto de referencia todavía (no se importó el histórico con columna SALDO para este campo)
+
+    let entradasPost = 0, salidasPost = 0;
+    for (const d of datosCampo) {
+      if (d.fecha > ref.fecha) {
+        if (d._tipo === 'entrada') entradasPost += d._litros;
+        else salidasPost += d._litros;
+      }
+    }
+    return { saldo: ref.saldo + entradasPost - salidasPost, fechaRef: ref.fecha };
+  }
+
+  function renderizarSaldosPorCampo() {
+    const porCampo = {};
+    for (const d of datosEnriquecidos) {
+      const campo = d._campoNorm;
+      if (!porCampo[campo]) porCampo[campo] = [];
+      porCampo[campo].push(d);
+    }
+
+    const colores = ['c1', 'c2', 'c3'];
+
+    const html = CAMPOS_CON_PANEL.map((campo, i) => {
+      const datosCampo = porCampo[campo] || [];
+      const { diario, semanal, mensual } = calcularPromedios30Dias(datosCampo);
+
+      let bloqueSaldo;
+      const resultadoSaldo = calcularSaldo(campo, datosCampo);
+      if (resultadoSaldo) {
+        bloqueSaldo = `
+          <div class="saldo-valor">${resultadoSaldo.saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })} L</div>
+          <div class="saldo-label">Saldo disponible actual</div>`;
+      } else {
+        bloqueSaldo = `
+          <div class="saldo-valor">—</div>
+          <div class="saldo-label">Sin saldo de referencia todavía (reimportá el histórico con la columna SALDO)</div>`;
+      }
+
+      return `<div class="saldo-card ${colores[i % colores.length]}">
+        <h4>${campo}</h4>
+        <div class="sub">Se actualiza con cada carga nueva</div>
+        ${bloqueSaldo}
+        <div class="saldo-label" style="margin-top:14px; margin-bottom:0;">Consumo promedio (últimos 30 días)</div>
+        <div class="saldo-metric"><span>Por día</span><span>${diario.toLocaleString('es-AR', { maximumFractionDigits: 1 })} L</span></div>
+        <div class="saldo-metric"><span>Por semana</span><span>${semanal.toLocaleString('es-AR', { maximumFractionDigits: 0 })} L</span></div>
+        <div class="saldo-metric"><span>Por mes</span><span>${mensual.toLocaleString('es-AR', { maximumFractionDigits: 0 })} L</span></div>
+      </div>`;
+    }).join('');
+
+    document.getElementById('saldosPorCampo').innerHTML = html || '<p style="color:#888;">Todavía no hay datos cargados.</p>';
+  }
+
+  // ---------- Carga inicial ----------
+  async function cargarDatos() {
+    document.getElementById('tablaBody').innerHTML = '<tr><td colspan="7" class="info-carga">Cargando datos...</td></tr>';
+    const [resCombustible, resSaldos] = await Promise.all([
+      fetch('/api/combustible'),
+      fetch('/api/saldos-referencia'),
+    ]);
+    todosLosDatos = await resCombustible.json();
+    saldosReferencia = await resSaldos.json();
+    datosEnriquecidos = enriquecer(todosLosDatos);
+    poblarFiltros();
+    datosFiltrados = datosEnriquecidos;
+    paginaActual = 1;
+    renderizarTodo(datosFiltrados);
+    renderizarSaldosPorCampo();
+    renderizarPorMaquinaria30();
+    renderizarConsumoMensual2026();
+  }
+
+  function poblarFiltros() {
+    const campos = [...new Set(datosEnriquecidos.map(d => d._campoNorm))].sort();
+    const vehiculos = [...new Set(datosEnriquecidos.map(d => d.vehiculo).filter(Boolean))].sort();
+
+    const selCampo = document.getElementById('filtroCampo');
+    const selVehiculo = document.getElementById('filtroVehiculo');
+    const valorCampoActual = selCampo.value;
+    const valorVehiculoActual = selVehiculo.value;
+
+    selCampo.innerHTML = '<option value="">Todos</option>' + campos.map(c => `<option value="${c}">${c}</option>`).join('');
+    selVehiculo.innerHTML = '<option value="">Todos</option>' + vehiculos.map(v => `<option value="${v}">${v}</option>`).join('');
+
+    selCampo.value = valorCampoActual;
+    selVehiculo.value = valorVehiculoActual;
+  }
+
+  // ---------- Filtros ----------
+  function aplicarFiltros() {
+    const campo = document.getElementById('filtroCampo').value;
+    const vehiculo = document.getElementById('filtroVehiculo').value;
+    const tipo = document.getElementById('filtroTipo').value;
+    const desde = document.getElementById('filtroDesde').value;
+    const hasta = document.getElementById('filtroHasta').value;
+
+    datosFiltrados = datosEnriquecidos.filter(d => {
+      if (campo && d._campoNorm !== campo) return false;
+      if (vehiculo && d.vehiculo !== vehiculo) return false;
+      if (tipo && d._tipo !== tipo) return false;
+      if (desde && d.fecha < desde) return false;
+      if (hasta && d.fecha > hasta) return false;
+      return true;
+    });
+
+    paginaActual = 1;
+    renderizarTodo(datosFiltrados);
+  }
+
+  function limpiarFiltros() {
+    document.getElementById('filtroCampo').value = '';
+    document.getElementById('filtroVehiculo').value = '';
+    document.getElementById('filtroTipo').value = '';
+    document.getElementById('filtroDesde').value = '';
+    document.getElementById('filtroHasta').value = '';
+    datosFiltrados = datosEnriquecidos;
+    paginaActual = 1;
+    renderizarTodo(datosFiltrados);
+  }
+
+  function renderizarTodo(datos) {
+    renderizarTabla(datos);
+  }
+
+  // ---------- Tabla con paginación (rápida: arma un string y pinta 1 sola vez) ----------
+  function renderizarTabla(datos) {
+    const ordenados = [...datos].sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+    const totalPaginas = Math.max(1, Math.ceil(ordenados.length / FILAS_POR_PAGINA));
+    if (paginaActual > totalPaginas) paginaActual = totalPaginas;
+
+    const inicio = (paginaActual - 1) * FILAS_POR_PAGINA;
+    const pagina = ordenados.slice(inicio, inicio + FILAS_POR_PAGINA);
+
+    const partes = [];
+    let mesAnterior = null;
+    let contadorMes = 0;
+
+    if (pagina.length === 0) {
+      partes.push('<tr><td colspan="7" class="info-carga">No hay registros para estos filtros.</td></tr>');
+    }
+
+    for (const d of pagina) {
+      const fechaObj = new Date(d.fecha + 'T00:00:00');
+      const mesLabel = fechaObj.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+
+      if (mesLabel !== mesAnterior) {
+        contadorMes++;
+        mesAnterior = mesLabel;
+        partes.push(`<tr class="fila-mes-header"><td colspan="6">📅 ${mesLabel.toUpperCase()}</td></tr>`);
+      }
+
+      const claseMes = contadorMes % 2 === 0 ? 'mes-par' : 'mes-impar';
+      const esEntrada = d._tipo === 'entrada';
+      const claseTipo = esEntrada ? 'fila-entrada' : 'fila-salida';
+      const badge = esEntrada
+        ? '<span class="badge badge-entrada">↓ Entrada</span>'
+        : '<span class="badge badge-salida">↑ Salida</span>';
+
+      partes.push(`<tr class="${claseMes} ${claseTipo}">
+        <td>${d.fecha}</td>
+        <td>${badge}</td>
+        <td>${d._campoNorm}</td>
+        <td>${d.vehiculo}</td>
+        <td>${d._litros.toLocaleString('es-AR')} L</td>
+        <td>$${d._costo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</td>
+        <td>
+          <button class="btn-fila btn-editar" data-accion="editar" data-id="${d.id}">Editar</button>
+          <button class="btn-fila btn-eliminar" data-accion="eliminar" data-id="${d.id}">Eliminar</button>
+        </td>
+      </tr>`);
+    }
+
+    document.getElementById('tablaBody').innerHTML = partes.join('');
+    document.getElementById('infoPagina').textContent = `Página ${paginaActual} de ${totalPaginas} (${ordenados.length} registros)`;
+    document.getElementById('btnPagAnterior').disabled = paginaActual <= 1;
+    document.getElementById('btnPagSiguiente').disabled = paginaActual >= totalPaginas;
+  }
+
+  // ---------- Consumo por maquinaria/vehículo, últimos 30 días ----------
+  function renderizarPorMaquinaria30() {
+    const hoy = new Date();
+    const hoyStr = hoy.toISOString().slice(0, 10);
+    const limite = new Date(hoy);
+    limite.setDate(limite.getDate() - 30);
+    const limiteStr = limite.toISOString().slice(0, 10);
+
+    const porVehiculo = {};
+    for (const d of datosEnriquecidos) {
+      if (d._tipo !== 'salida') continue;
+      if (d.fecha < limiteStr || d.fecha > hoyStr) continue;
+
+      const clave = d.vehiculo || 'Sin especificar';
+      if (!porVehiculo[clave]) porVehiculo[clave] = { litros: 0, cargas: 0, campo: d._campoNorm };
+      porVehiculo[clave].litros += d._litros;
+      porVehiculo[clave].cargas += 1;
+    }
+
+    const filas = Object.entries(porVehiculo)
+      .sort((a, b) => b[1].litros - a[1].litros)
+      .slice(0, 20)
+      .map(([vehiculo, v]) => `<tr>
+        <td>${vehiculo}</td>
+        <td>${v.campo}</td>
+        <td>${v.litros.toLocaleString('es-AR', { maximumFractionDigits: 0 })} L</td>
+        <td>${v.cargas}</td>
+      </tr>`).join('');
+
+    document.getElementById('tablaPorMaquinaria30').innerHTML = filas || '<tr><td colspan="4" class="info-carga">Sin consumo en los últimos 30 días.</td></tr>';
+  }
+
+  // ---------- Consumo mensual del año 2026, dividido por campo ----------
+  function renderizarConsumoMensual2026() {
+    const nombresMeses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    // Matriz: 12 meses x 3 campos
+    const porMesYCampo = Array.from({ length: 12 }, () => ({ 'PLANTA': 0, 'LA LONJA': 0, 'PALMAR CHICO': 0 }));
+    const totalPorMes = Array(12).fill(0); // incluye TODOS los campos (aunque no tengan panel), para que el total sea real
+
+    for (const d of datosEnriquecidos) {
+      if (d._tipo !== 'salida') continue;
+      if (!d.fecha.startsWith('2026-')) continue;
+      const mesIdx = Number(d.fecha.slice(5, 7)) - 1;
+
+      totalPorMes[mesIdx] += d._litros;
+      if (CAMPOS_CON_PANEL.includes(d._campoNorm)) {
+        porMesYCampo[mesIdx][d._campoNorm] += d._litros;
+      }
+    }
+
+    const totalAnual = totalPorMes.reduce((s, v) => s + v, 0);
+    const totalesPorCampo = { 'PLANTA': 0, 'LA LONJA': 0, 'PALMAR CHICO': 0 };
+
+    const filas = porMesYCampo.map((campos, i) => {
+      if (totalPorMes[i] === 0) return '';
+      totalesPorCampo['PLANTA'] += campos['PLANTA'];
+      totalesPorCampo['LA LONJA'] += campos['LA LONJA'];
+      totalesPorCampo['PALMAR CHICO'] += campos['PALMAR CHICO'];
+
+      const fmt = (v) => v.toLocaleString('es-AR', { maximumFractionDigits: 0 }) + ' L';
+      return `<tr>
+        <td>${nombresMeses[i]}</td>
+        <td>${fmt(campos['PLANTA'])}</td>
+        <td>${fmt(campos['LA LONJA'])}</td>
+        <td>${fmt(campos['PALMAR CHICO'])}</td>
+        <td style="font-weight:bold;">${fmt(totalPorMes[i])}</td>
+      </tr>`;
+    }).join('');
+
+    const fmt = (v) => v.toLocaleString('es-AR', { maximumFractionDigits: 0 }) + ' L';
+    const filaTotal = `<tr style="font-weight:bold; background:var(--verde-claro);">
+      <td>Total 2026</td>
+      <td>${fmt(totalesPorCampo['PLANTA'])}</td>
+      <td>${fmt(totalesPorCampo['LA LONJA'])}</td>
+      <td>${fmt(totalesPorCampo['PALMAR CHICO'])}</td>
+      <td>${fmt(totalAnual)}</td>
+    </tr>`;
+
+    document.getElementById('tablaMensual2026').innerHTML = (filas || '<tr><td colspan="5" class="info-carga">Sin datos de 2026 todavía.</td></tr>') + filaTotal;
+  }
+
+  // ---------- Eventos ----------
+  document.getElementById('btnAplicarFiltros').addEventListener('click', aplicarFiltros);
+  document.getElementById('btnLimpiarFiltros').addEventListener('click', limpiarFiltros);
+
+  document.getElementById('btnPagAnterior').addEventListener('click', () => {
+    if (paginaActual > 1) { paginaActual--; renderizarTabla(datosFiltrados); }
+  });
+  document.getElementById('btnPagSiguiente').addEventListener('click', () => {
+    paginaActual++; renderizarTabla(datosFiltrados);
+  });
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  document.getElementById('formCombustible').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = {
+      fecha: document.getElementById('fecha').value,
+      cisterna: document.getElementById('cisterna').value,
+      campo: document.getElementById('campo').value,
+      vehiculo: document.getElementById('vehiculo').value,
+      litrosCargados: Number(document.getElementById('litrosCargados').value),
+      litrosConsumidos: Number(document.getElementById('litrosConsumidos').value),
+    };
+
+    if (editandoId) {
+      const confirmado = confirm('¿Confirmás guardar los cambios en este registro?');
+      if (!confirmado) return;
+      await fetch('/api/combustible/' + editandoId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      salirModoEdicion();
+    } else {
+      await fetch('/api/combustible', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      e.target.reset();
+    }
+    cargarDatos();
+  });
+
+  document.getElementById('btnImportar').addEventListener('click', async () => {
+    const input = document.getElementById('inputExcel');
+    const resultado = document.getElementById('resultadoImportar');
+    if (!input.files.length) {
+      resultado.textContent = 'Elegí un archivo primero.';
+      return;
+    }
+    resultado.textContent = 'Importando...';
+    const formData = new FormData();
+    formData.append('archivo', input.files[0]);
+    const res = await fetch('/api/importar-excel', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.error) {
+      resultado.textContent = '❌ ' + data.error;
+    } else {
+      resultado.textContent = `✅ Se importaron ${data.agregados} registros nuevos (de ${data.totalFilasExcel} filas totales).`;
+      cargarDatos();
+    }
+  });
+
+  document.getElementById('btnImportarHistorico').addEventListener('click', async () => {
+    const input = document.getElementById('inputHistorico');
+    const resultado = document.getElementById('resultadoHistorico');
+    if (!input.files.length) {
+      resultado.textContent = 'Elegí un archivo primero.';
+      return;
+    }
+    resultado.textContent = 'Importando histórico, puede tardar unos segundos...';
+    const formData = new FormData();
+    formData.append('archivo', input.files[0]);
+    const res = await fetch('/api/importar-historico', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.error) {
+      resultado.textContent = '❌ ' + data.error;
+    } else {
+      resultado.textContent = `✅ Se importaron ${data.agregados} registros nuevos (de ${data.filasProcesadas} filas procesadas).`;
+      cargarDatos();
+    }
+  });
+
+  document.getElementById('btnInforme').addEventListener('click', async () => {
+    const div = document.getElementById('informe');
+    div.style.display = 'block';
+    div.textContent = 'Generando informe, esperá unos segundos...';
+    const res = await fetch('/api/informe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ datos: datosFiltrados })
+    });
+    const data = await res.json();
+    div.textContent = data.informe;
+  });
+
+  // ---------- Editar / Eliminar ----------
+  let editandoId = null;
+
+  function entrarModoEdicion(id) {
+    const registro = datosEnriquecidos.find(d => d.id === id);
+    if (!registro) return;
+
+    document.getElementById('fecha').value = registro.fecha;
+    document.getElementById('cisterna').value = registro.cisterna || '';
+    document.getElementById('campo').value = registro.campo || '';
+    document.getElementById('vehiculo').value = registro.vehiculo || '';
+    document.getElementById('litrosCargados').value = registro.litrosCargados;
+    document.getElementById('litrosConsumidos').value = registro.litrosConsumidos;
+
+    editandoId = id;
+    document.getElementById('avisoEdicion').style.display = 'flex';
+    document.getElementById('avisoEdicion').style.alignItems = 'center';
+    document.getElementById('formCombustible').classList.add('editando');
+    document.getElementById('btnGuardarCarga').textContent = 'Guardar cambios';
+
+    document.querySelector('.tab-btn[data-tab="registros"]').click();
+    document.getElementById('formCombustible').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function salirModoEdicion() {
+    editandoId = null;
+    document.getElementById('formCombustible').reset();
+    document.getElementById('avisoEdicion').style.display = 'none';
+    document.getElementById('formCombustible').classList.remove('editando');
+    document.getElementById('btnGuardarCarga').textContent = 'Guardar carga';
+  }
+
+  document.getElementById('btnCancelarEdicion').addEventListener('click', salirModoEdicion);
+
+  async function eliminarRegistro(id) {
+    const registro = datosEnriquecidos.find(d => d.id === id);
+    const descripcion = registro ? `${registro.fecha} · ${registro.vehiculo} · ${registro.litrosCargados} L` : id;
+    const confirmado = confirm(`¿Seguro que querés eliminar este registro?\n\n${descripcion}\n\nEsta acción no se puede deshacer.`);
+    if (!confirmado) return;
+
+    const res = await fetch('/api/combustible/' + id, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.ok) {
+      cargarDatos();
+    } else {
+      alert('No se pudo eliminar el registro.');
+    }
+  }
+
+  // ---------- Saldo y consumo por campo (siempre sobre el dataset completo, no el filtrado) ----------
+  const PALETA_CAMPOS = [
+    ['#1c4d33', '#2e7d4f'],  // verde
+    ['#b8611f', '#d9762e'],  // naranja
+    ['#b8842a', '#d9a441'],  // dorado
+    ['#96291d', '#c0392b'],  // rojo
+    ['#1a5276', '#2e86c1'],  // azul
+    ['#6c3483', '#9b59b6'],  // violeta
+    ['#117864', '#17a589'],  // turquesa
+  ];
+
+  function calcularSaldosPorCampo(datos) {
+    if (datos.length === 0) return [];
+
+    let fechaMax = datos[0].fecha;
+    datos.forEach(d => { if (d.fecha > fechaMax) fechaMax = d.fecha; });
+    const [anioActual, mesActual, diaActualStr] = fechaMax.split('-');
+    const diaActual = Number(diaActualStr);
+    const diasEnMes = new Date(Number(anioActual), Number(mesActual), 0).getDate();
+    const prefijoMesActual = `${anioActual}-${mesActual}`;
+
+    const porCampo = {};
+    datos.forEach(d => {
+      const campo = d._campoNorm;
+      if (!porCampo[campo]) porCampo[campo] = { entradas: 0, salidas: 0, salidaMesActual: 0 };
+      if (d._tipo === 'entrada') porCampo[campo].entradas += d._litros;
+      else porCampo[campo].salidas += d._litros;
+
+      if (d.fecha.startsWith(prefijoMesActual) && d._tipo === 'salida') {
+        porCampo[campo].salidaMesActual += d._litros;
+      }
+    });
+
+    return Object.entries(porCampo)
+      .map(([campo, v]) => {
+        const saldo = v.entradas - v.salidas;
+        const promedioDiario = diaActual > 0 ? v.salidaMesActual / diaActual : 0;
+        return {
+          campo,
+          saldo,
+          promedioDiario,
+          promedioSemanal: promedioDiario * 7,
+          promedioMensual: promedioDiario * diasEnMes,
+        };
+      })
+      .sort((a, b) => b.saldo - a.saldo);
+  }
+
+  function fmtL(n) {
+    return n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) + ' L';
+  }
+
+  function renderizarSaldosCampo(datosCompletos) {
+    const saldos = calcularSaldosPorCampo(datosCompletos);
+    const grid = document.getElementById('gridSaldosCampo');
+
+    if (saldos.length === 0) {
+      grid.innerHTML = '<p style="color:#888; font-style:italic;">Todavía no hay datos para calcular saldos.</p>';
+      return;
+    }
+
+    grid.innerHTML = saldos.map((s, i) => {
+      const [c1, c2] = PALETA_CAMPOS[i % PALETA_CAMPOS.length];
+      return `
+        <div class="campo-saldo-card" style="background: linear-gradient(135deg, ${c1}, ${c2});">
+          <h4>📍 ${s.campo}</h4>
+          <div class="saldo-principal">${fmtL(s.saldo)}</div>
+          <div class="saldo-label">Saldo disponible</div>
+          <div class="fila-metrica"><span>Consumo diario prom.</span><span class="val">${fmtL(s.promedioDiario)}</span></div>
+          <div class="fila-metrica"><span>Consumo semanal prom.</span><span class="val">${fmtL(s.promedioSemanal)}</span></div>
+          <div class="fila-metrica"><span>Consumo mensual prom.</span><span class="val">${fmtL(s.promedioMensual)}</span></div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Delegación de eventos: un solo listener para todos los botones Editar/Eliminar de la tabla
+  document.getElementById('tablaBody').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-accion]');
+    if (!btn) return;
+    const id = Number(btn.dataset.id);
+    if (btn.dataset.accion === 'editar') entrarModoEdicion(id);
+    if (btn.dataset.accion === 'eliminar') eliminarRegistro(id);
+  });
+
+  document.getElementById('btnNormalizar').addEventListener('click', async () => {
+    const resultado = document.getElementById('resultadoNormalizar');
+    resultado.textContent = 'Normalizando...';
+    const res = await fetch('/api/normalizar-vehiculos', { method: 'POST' });
+    const data = await res.json();
+    resultado.textContent = `✅ Se actualizaron ${data.cambios} registros con el nombre oficial.`;
+    cargarDatos();
+  });
+
+  cargarDatos();
+</script>
+</body>
+</html>

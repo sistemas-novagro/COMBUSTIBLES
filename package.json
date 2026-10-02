@@ -1,0 +1,21 @@
+{
+  "name": "novagro-combustibles",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.129.0",
+    "dotenv": "^18.0.4",
+    "express": "^5.2.1",
+    "lowdb": "^7.0.1",
+    "multer": "^2.4.0",
+    "xlsx": "^0.18.5"
+  }
+}
