@@ -354,6 +354,17 @@
         <button id="btnNormalizar" class="accion" style="background:var(--dorado);">Normalizar nombres</button>
         <p id="resultadoNormalizar"></p>
       </div>
+
+      <div class="card" style="border-top: 3px solid var(--rojo);">
+        <h3 style="margin-top:0;">🗂️ Administrar la base de datos</h3>
+        <p style="color:#777; font-size:0.85rem;">Cada importación queda registrada como un "lote" — podés deshacer una puntual sin tocar el resto, o reiniciar todo si hace falta empezar de cero (como borrar <code>data.json</code> a mano).</p>
+        <table style="margin-top:12px;">
+          <thead><tr><th>Fecha de importación</th><th>Origen</th><th>Registros</th><th>Acción</th></tr></thead>
+          <tbody id="tablaLotes"></tbody>
+        </table>
+        <button id="btnReiniciarTodo" class="accion" style="background:var(--rojo); margin-top:18px;">⚠️ Reiniciar toda la base de datos</button>
+        <p id="resultadoAdmin"></p>
+      </div>
     </section>
 
     <section id="tab-informe" class="tab-panel">
@@ -494,7 +505,61 @@
     renderizarSaldosPorCampo();
     renderizarPorMaquinaria30();
     renderizarConsumoMensual2026();
+    cargarLotes();
   }
+
+  // ---------- Administración: lotes de importación y reinicio ----------
+  async function cargarLotes() {
+    const res = await fetch('/api/admin/lotes');
+    const lotes = await res.json();
+    const tbody = document.getElementById('tablaLotes');
+
+    if (lotes.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="info-carga">Todavía no hay importaciones registradas.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = lotes.map(l => {
+      const fecha = l.fecha ? new Date(l.fecha).toLocaleString('es-AR') : 'Cargas manuales';
+      const origenLabel = l.origen === 'physis' ? '⚙️ Physis' : l.origen === 'historico' ? '📜 Histórico' : '✍️ Manual';
+      const botonBorrar = l.lote !== 'manual'
+        ? `<button class="btn-fila btn-eliminar" data-accion="borrar-lote" data-lote="${l.lote}">Deshacer</button>`
+        : '<span style="color:#aaa; font-size:0.8rem;">(editar/borrar fila por fila en Registros)</span>';
+      return `<tr>
+        <td>${fecha}</td>
+        <td>${origenLabel}</td>
+        <td>${l.cantidad}</td>
+        <td>${botonBorrar}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('tablaLotes').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-accion="borrar-lote"]');
+    if (!btn) return;
+    const lote = btn.dataset.lote;
+    const confirmado = confirm('¿Seguro que querés deshacer esta importación? Se van a borrar todos sus registros. Esta acción no se puede deshacer.');
+    if (!confirmado) return;
+
+    const res = await fetch('/api/admin/lotes/' + lote, { method: 'DELETE' });
+    const data = await res.json();
+    document.getElementById('resultadoAdmin').textContent = `Se eliminaron ${data.eliminados} registros.`;
+    cargarDatos();
+  });
+
+  document.getElementById('btnReiniciarTodo').addEventListener('click', async () => {
+    const primeraConfirmacion = confirm('⚠️ Esto va a borrar TODOS los registros de combustible y los saldos de referencia, de todos los campos. ¿Estás segura?');
+    if (!primeraConfirmacion) return;
+    const segundaConfirmacion = confirm('Confirmación final: esta acción es IRREVERSIBLE. ¿Reiniciar toda la base de datos?');
+    if (!segundaConfirmacion) return;
+
+    const res = await fetch('/api/admin/reset', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('resultadoAdmin').textContent = '✅ Base de datos reiniciada. Volvé a importar los Excel cuando quieras.';
+      cargarDatos();
+    }
+  });
 
   function poblarFiltros() {
     const campos = [...new Set(datosEnriquecidos.map(d => d._campoNorm))].sort();

@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import XLSX from 'xlsx';
+import basicAuth from 'express-basic-auth';
 
 dotenv.config();
 
@@ -15,6 +16,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 app.use(express.json());
+app.use(basicAuth({
+  users: { [process.env.APP_USER]: process.env.APP_PASSWORD },
+  challenge: true,
+  realm: 'NOVAGRO Combustibles',
+}));
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 const anthropic = new Anthropic({
@@ -56,6 +63,43 @@ app.get('/api/combustible', async (req, res) => {
 app.get('/api/saldos-referencia', async (req, res) => {
   await db.read();
   res.json(db.data.saldosReferencia || {});
+});
+
+// --- Administración de la base de datos (reemplaza lo que hacías borrando data.json a mano) ---
+
+// Lista cada importación realizada (lote), con fecha, origen y cantidad de registros
+app.get('/api/admin/lotes', async (req, res) => {
+  await db.read();
+  const porLote = {};
+  for (const r of db.data.combustible) {
+    const clave = r.lote || 'manual';
+    if (!porLote[clave]) porLote[clave] = { lote: clave, origen: r.origen || 'manual', cantidad: 0 };
+    porLote[clave].cantidad++;
+  }
+  const lotes = Object.values(porLote)
+    .map(l => ({ ...l, fecha: l.lote === 'manual' ? null : new Date(Number(l.lote)).toISOString() }))
+    .sort((a, b) => (b.lote === 'manual' ? 0 : b.lote) - (a.lote === 'manual' ? 0 : a.lote));
+  res.json(lotes);
+});
+
+// Elimina todos los registros de un lote puntual (deshace una importación)
+app.delete('/api/admin/lotes/:lote', async (req, res) => {
+  await db.read();
+  const lote = req.params.lote;
+  const antes = db.data.combustible.length;
+  db.data.combustible = db.data.combustible.filter(r => String(r.lote || 'manual') !== lote);
+  const eliminados = antes - db.data.combustible.length;
+  await db.write();
+  res.json({ ok: true, eliminados });
+});
+
+// Reinicia la base completa (equivalente a borrar data.json a mano)
+app.post('/api/admin/reset', async (req, res) => {
+  await db.read();
+  db.data.combustible = [];
+  db.data.saldosReferencia = {};
+  await db.write();
+  res.json({ ok: true });
 });
 
 // Editar una carga existente
@@ -102,6 +146,8 @@ app.post('/api/importar-excel', upload.single('archivo'), async (req, res) => {
 
     await db.read();
 
+    const lote = Date.now(); // identifica esta importación puntual, para poder deshacerla después
+
     const clavesExistentes = new Set(
       db.data.combustible.map(r => `${r.fecha}|${r.vehiculo}|${r.litrosCargados}`)
     );
@@ -126,6 +172,8 @@ app.post('/api/importar-excel', upload.single('archivo'), async (req, res) => {
         litrosConsumidos: 0,
         costo: f.Costo || 0,
         combustible: f.Insumo ? f.Insumo.trim() : '',
+        lote,
+        origen: 'physis',
       });
       agregados++;
     }
@@ -173,7 +221,8 @@ const ALIAS_VEHICULOS = {
   'Toyota Hilux AE778WY': ['HILUX', 'TOYOTA 778', 'TOYOTA-WY', 'HILUX CLAUDIO'],
   'Nissan Frontier AF064AO': ['NISSAN', 'NISSAN 064', 'AF064'],
   'Toyota Hilux AI217HM': ['HILUX GONZALO', 'HILUX AI217', 'AI217HM'],
-  'Moto Keller': ['MOTO', 'KELLER'],
+  'Moto Keller A208VLA': ['A208VLA', 'MOTO A208VLA', 'MOTO GANADERIA'],
+  'Moto Keller 297-SAD': ['297-SAD', 'MOTO 297-SAD', 'MOTO SELENE', 'MOTO 297 SAD'],
 
   // Camiones
   'MB 1933 I GOS 164': ['MB 1933 I', 'MB 1933', 'GOS164', 'GOS 164'],
@@ -237,6 +286,7 @@ app.post('/api/importar-historico', upload.single('archivo'), async (req, res) =
       porFecha[r.fecha].push(r);
     }
 
+    const lote = Date.now(); // identifica esta importación puntual, para poder deshacerla después
     let agregados = 0;
     let procesadas = 0;
     let yaExistian = 0;
@@ -271,6 +321,8 @@ app.post('/api/importar-historico', upload.single('archivo'), async (req, res) =
         costo: costo || 0,
         combustible: 'GasOil',
         reloj: reloj != null ? reloj : null,
+        lote,
+        origen: 'historico',
       };
       db.data.combustible.push(nuevo);
       if (!porFecha[fecha]) porFecha[fecha] = [];
