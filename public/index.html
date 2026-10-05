@@ -320,7 +320,7 @@
 
       <table>
         <thead>
-          <tr><th>Fecha</th><th>Tipo</th><th>Campo</th><th>Vehículo/Cisterna</th><th>Litros</th><th>Costo</th><th>Acciones</th></tr>
+          <tr><th><input type="checkbox" id="chkTodos"></th><th>Fecha</th><th>Tipo</th><th>Campo</th><th>Vehículo/Cisterna</th><th>Litros</th><th>Costo</th><th>Acciones</th></tr>
         </thead>
         <tbody id="tablaBody"></tbody>
       </table>
@@ -329,6 +329,11 @@
         <button id="btnPagAnterior">← Anterior</button>
         <span id="infoPagina">Página 1</span>
         <button id="btnPagSiguiente">Siguiente →</button>
+      </div>
+
+      <div style="margin-top:10px;">
+        <button id="btnEliminarSeleccionados" class="accion" style="background:var(--rojo);" disabled>Eliminar seleccionados (0)</button>
+        <span style="font-size:0.78rem; color:#888; margin-left:8px;">Tildá filas con el casillero de la izquierda — funciona entre páginas distintas.</span>
       </div>
     </section>
 
@@ -385,6 +390,7 @@
 
   const FILAS_POR_PAGINA = 50;
   let paginaActual = 1;
+  const seleccionados = new Set(); // ids marcados con checkbox en Registros
 
   // ---------- Utilidades ----------
   function normalizarCampo(campo) {
@@ -534,6 +540,61 @@
     }).join('');
   }
 
+  // Pide la clave de administrador por un cuadro de texto simple. Devuelve
+  // null si cancela (en cuyo caso el que llama no debe seguir adelante).
+  function pedirClaveAdmin() {
+    return prompt('Clave de administrador (requerida para borrar o reiniciar):');
+  }
+
+  // ---------- Selección múltiple en Registros (checkboxes) ----------
+  function actualizarBotonSeleccionados() {
+    const btn = document.getElementById('btnEliminarSeleccionados');
+    btn.textContent = `Eliminar seleccionados (${seleccionados.size})`;
+    btn.disabled = seleccionados.size === 0;
+  }
+
+  document.getElementById('tablaBody').addEventListener('change', (e) => {
+    if (!e.target.classList.contains('chk-fila')) return;
+    const id = Number(e.target.dataset.id);
+    if (e.target.checked) seleccionados.add(id);
+    else seleccionados.delete(id);
+    actualizarBotonSeleccionados();
+  });
+
+  document.getElementById('chkTodos').addEventListener('change', (e) => {
+    document.querySelectorAll('#tablaBody .chk-fila').forEach(chk => {
+      chk.checked = e.target.checked;
+      const id = Number(chk.dataset.id);
+      if (e.target.checked) seleccionados.add(id);
+      else seleccionados.delete(id);
+    });
+    actualizarBotonSeleccionados();
+  });
+
+  document.getElementById('btnEliminarSeleccionados').addEventListener('click', async () => {
+    if (seleccionados.size === 0) return;
+    const confirmado = confirm(`¿Eliminar ${seleccionados.size} registro(s) seleccionado(s)? Esta acción no se puede deshacer.`);
+    if (!confirmado) return;
+
+    const adminPassword = pedirClaveAdmin();
+    if (!adminPassword) return;
+
+    const res = await fetch('/api/admin/borrar-registros', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: Array.from(seleccionados), adminPassword }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert('❌ ' + (data.error || 'No se pudo completar la acción.'));
+      return;
+    }
+    seleccionados.clear();
+    document.getElementById('chkTodos').checked = false;
+    actualizarBotonSeleccionados();
+    cargarDatos();
+  });
+
   document.getElementById('tablaLotes').addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-accion="borrar-lote"]');
     if (!btn) return;
@@ -541,9 +602,20 @@
     const confirmado = confirm('¿Seguro que querés deshacer esta importación? Se van a borrar todos sus registros. Esta acción no se puede deshacer.');
     if (!confirmado) return;
 
-    const res = await fetch('/api/admin/lotes/' + lote, { method: 'DELETE' });
+    const adminPassword = pedirClaveAdmin();
+    if (!adminPassword) return;
+
+    const res = await fetch('/api/admin/lotes/' + lote, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adminPassword }),
+    });
     const data = await res.json();
-    document.getElementById('resultadoAdmin').textContent = `Se eliminaron ${data.eliminados} registros.`;
+    if (!res.ok) {
+      document.getElementById('resultadoAdmin').textContent = '❌ ' + (data.error || 'No se pudo completar la acción.');
+      return;
+    }
+    document.getElementById('resultadoAdmin').textContent = `✅ Se eliminaron ${data.eliminados} registros.`;
     cargarDatos();
   });
 
@@ -553,12 +625,21 @@
     const segundaConfirmacion = confirm('Confirmación final: esta acción es IRREVERSIBLE. ¿Reiniciar toda la base de datos?');
     if (!segundaConfirmacion) return;
 
-    const res = await fetch('/api/admin/reset', { method: 'POST' });
+    const adminPassword = pedirClaveAdmin();
+    if (!adminPassword) return;
+
+    const res = await fetch('/api/admin/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adminPassword }),
+    });
     const data = await res.json();
-    if (data.ok) {
-      document.getElementById('resultadoAdmin').textContent = '✅ Base de datos reiniciada. Volvé a importar los Excel cuando quieras.';
-      cargarDatos();
+    if (!res.ok) {
+      document.getElementById('resultadoAdmin').textContent = '❌ ' + (data.error || 'No se pudo completar la acción.');
+      return;
     }
+    document.getElementById('resultadoAdmin').textContent = '✅ Base de datos reiniciada. Volvé a importar los Excel cuando quieras.';
+    cargarDatos();
   });
 
   function poblarFiltros() {
@@ -627,7 +708,7 @@
     let contadorMes = 0;
 
     if (pagina.length === 0) {
-      partes.push('<tr><td colspan="7" class="info-carga">No hay registros para estos filtros.</td></tr>');
+      partes.push('<tr><td colspan="8" class="info-carga">No hay registros para estos filtros.</td></tr>');
     }
 
     for (const d of pagina) {
@@ -637,7 +718,7 @@
       if (mesLabel !== mesAnterior) {
         contadorMes++;
         mesAnterior = mesLabel;
-        partes.push(`<tr class="fila-mes-header"><td colspan="6">📅 ${mesLabel.toUpperCase()}</td></tr>`);
+        partes.push(`<tr class="fila-mes-header"><td colspan="8">📅 ${mesLabel.toUpperCase()}</td></tr>`);
       }
 
       const claseMes = contadorMes % 2 === 0 ? 'mes-par' : 'mes-impar';
@@ -646,8 +727,10 @@
       const badge = esEntrada
         ? '<span class="badge badge-entrada">↓ Entrada</span>'
         : '<span class="badge badge-salida">↑ Salida</span>';
+      const marcado = seleccionados.has(d.id) ? 'checked' : '';
 
       partes.push(`<tr class="${claseMes} ${claseTipo}">
+        <td><input type="checkbox" class="chk-fila" data-id="${d.id}" ${marcado}></td>
         <td>${d.fecha}</td>
         <td>${badge}</td>
         <td>${d._campoNorm}</td>
