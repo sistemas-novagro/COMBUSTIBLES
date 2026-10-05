@@ -277,7 +277,7 @@
     </nav>
 
     <section id="tab-resumen" class="tab-panel active">
-      <h3 style="margin-top:0; color:var(--verde-oscuro);">⛽ Saldo disponible — al día de hoy</h3>
+      <h3 style="margin-top:0; color:var(--verde-oscuro);">⛽ Saldo disponible por campo</h3>
       <div class="saldo-grid" id="saldosPorCampo"></div>
 
       <div class="card">
@@ -358,6 +358,13 @@
         <p style="color:#777; font-size:0.85rem;">Aplica el diccionario de alias (MF RETRO → Retro CMF03, etc.) a todo lo ya cargado. Usalo cada vez que te confirme que agregué una equivalencia nueva.</p>
         <button id="btnNormalizar" class="accion" style="background:var(--dorado);">Normalizar nombres</button>
         <p id="resultadoNormalizar"></p>
+      </div>
+
+      <div class="card" style="border-top: 3px solid var(--rojo);">
+        <h3 style="margin-top:0;">🔎 Posibles duplicados</h3>
+        <p style="color:#777; font-size:0.85rem;">Misma fecha, mismo vehículo, litros parecidos — probablemente el mismo evento cargado dos veces (una vez por Physis, otra por el histórico). Revisá cada grupo y dejá solo el correcto.</p>
+        <button id="btnBuscarDuplicados" class="accion">Buscar duplicados</button>
+        <div id="listaDuplicados" style="margin-top:14px;"></div>
       </div>
 
       <div class="card" style="border-top: 3px solid var(--rojo);">
@@ -468,22 +475,37 @@
       const datosCampo = porCampo[campo] || [];
       const { diario, semanal, mensual } = calcularPromedios30Dias(datosCampo);
 
+      // Fecha real de la última carga cargada para este campo (de cualquier tipo)
+      const fechaUltimaCarga = datosCampo.length
+        ? datosCampo.reduce((max, d) => (d.fecha > max ? d.fecha : max), datosCampo[0].fecha)
+        : null;
+      const fechaUltimaCargaFmt = fechaUltimaCarga
+        ? new Date(fechaUltimaCarga + 'T00:00:00').toLocaleDateString('es-AR')
+        : 'sin cargas';
+
       let bloqueSaldo;
       const resultadoSaldo = calcularSaldo(campo, datosCampo);
+      let diasRestantes = null;
       if (resultadoSaldo) {
+        if (diario > 0) diasRestantes = resultadoSaldo.saldo / diario;
         bloqueSaldo = `
           <div class="saldo-valor">${resultadoSaldo.saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })} L</div>
-          <div class="saldo-label">Saldo disponible actual</div>`;
+          <div class="saldo-label">Saldo disponible</div>`;
       } else {
         bloqueSaldo = `
           <div class="saldo-valor">—</div>
           <div class="saldo-label">Sin saldo de referencia todavía (reimportá el histórico con la columna SALDO)</div>`;
       }
 
+      const bloqueDias = diasRestantes != null
+        ? `<div class="saldo-metric" style="font-weight:bold;"><span>⏳ Días de combustible restantes</span><span>${diasRestantes >= 0 ? diasRestantes.toLocaleString('es-AR', { maximumFractionDigits: 0 }) + ' días' : '0 días (sin stock)'}</span></div>`
+        : `<div class="saldo-metric"><span>⏳ Días de combustible restantes</span><span>— (sin consumo reciente)</span></div>`;
+
       return `<div class="saldo-card ${colores[i % colores.length]}">
         <h4>${campo}</h4>
-        <div class="sub">Se actualiza con cada carga nueva</div>
+        <div class="sub">Última carga: ${fechaUltimaCargaFmt}</div>
         ${bloqueSaldo}
+        ${bloqueDias}
         <div class="saldo-label" style="margin-top:14px; margin-bottom:0;">Consumo promedio (últimos 30 días)</div>
         <div class="saldo-metric"><span>Por día</span><span>${diario.toLocaleString('es-AR', { maximumFractionDigits: 1 })} L</span></div>
         <div class="saldo-metric"><span>Por semana</span><span>${semanal.toLocaleString('es-AR', { maximumFractionDigits: 0 })} L</span></div>
@@ -1076,6 +1098,61 @@
     const data = await res.json();
     resultado.textContent = `✅ Se actualizaron ${data.cambios} registros con el nombre oficial.`;
     cargarDatos();
+  });
+
+  // ---------- Detector de duplicados ----------
+  document.getElementById('btnBuscarDuplicados').addEventListener('click', async () => {
+    const contenedor = document.getElementById('listaDuplicados');
+    contenedor.innerHTML = '<p class="info-carga">Buscando...</p>';
+
+    const res = await fetch('/api/admin/duplicados');
+    const grupos = await res.json();
+
+    if (grupos.length === 0) {
+      contenedor.innerHTML = '<p style="color:var(--verde-oscuro); font-weight:bold;">✅ No se encontraron duplicados.</p>';
+      return;
+    }
+
+    contenedor.innerHTML = grupos.map((g, gi) => {
+      const filas = g.registros.map(r => `
+        <label style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #eee; font-size:0.85rem;">
+          <input type="checkbox" class="chk-dup" data-id="${r.id}">
+          <span style="flex:1;">
+            <strong>${r.origen === 'physis' ? '⚙️ Physis' : r.origen === 'historico' ? '📜 Histórico' : '✍️ Manual'}</strong>
+            — ${r.litrosCargados} L — $${Number(r.costo || 0).toLocaleString('es-AR')} — campo: ${r.campo} — "${r.cisterna}"
+          </span>
+        </label>`).join('');
+      return `<div class="card" style="background:#fff8e8; margin-bottom:10px;">
+        <strong>${g.fecha} — ${g.vehiculo}</strong>
+        <div style="margin-top:6px;">${filas}</div>
+      </div>`;
+    }).join('') + `<button id="btnEliminarDuplicados" class="accion" style="background:var(--rojo);">Eliminar los marcados</button>`;
+
+    document.getElementById('btnEliminarDuplicados').addEventListener('click', async () => {
+      const ids = Array.from(document.querySelectorAll('.chk-dup:checked')).map(chk => Number(chk.dataset.id));
+      if (ids.length === 0) {
+        alert('Marcá al menos uno para eliminar.');
+        return;
+      }
+      const confirmado = confirm(`¿Eliminar ${ids.length} registro(s) marcados como duplicados?`);
+      if (!confirmado) return;
+
+      const adminPassword = pedirClaveAdmin();
+      if (!adminPassword) return;
+
+      const res2 = await fetch('/api/admin/borrar-registros', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, adminPassword }),
+      });
+      const data2 = await res2.json();
+      if (!res2.ok) {
+        alert('❌ ' + (data2.error || 'No se pudo completar la acción.'));
+        return;
+      }
+      document.getElementById('btnBuscarDuplicados').click(); // refresca la lista
+      cargarDatos();
+    });
   });
 
   cargarDatos();

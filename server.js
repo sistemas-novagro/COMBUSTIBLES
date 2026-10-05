@@ -67,7 +67,22 @@ app.get('/api/saldos-referencia', async (req, res) => {
 
 // --- Administración de la base de datos (reemplaza lo que hacías borrando data.json a mano) ---
 
-// Lista cada importación realizada (lote), con fecha, origen y cantidad de registros
+// Todas las acciones destructivas (deshacer una importación, borrar en bloque,
+// reiniciar todo) piden esta clave aparte — distinta de la general del sitio —
+// para que solo quien la tenga pueda ejecutarlas.
+function requireAdminPassword(req, res, next) {
+  const clave = req.body && req.body.adminPassword;
+  if (!process.env.ADMIN_PASSWORD) {
+    return res.status(500).json({ error: 'ADMIN_PASSWORD no está configurada en el servidor.' });
+  }
+  if (!clave || clave !== process.env.ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'Clave de administrador incorrecta.' });
+  }
+  next();
+}
+
+// Lista cada importación realizada (lote), con fecha, origen y cantidad de registros.
+// Esta sí la puede ver cualquiera con acceso al sitio (no es destructiva), no pide clave extra.
 app.get('/api/admin/lotes', async (req, res) => {
   await db.read();
   const porLote = {};
@@ -82,8 +97,8 @@ app.get('/api/admin/lotes', async (req, res) => {
   res.json(lotes);
 });
 
-// Elimina todos los registros de un lote puntual (deshace una importación)
-app.delete('/api/admin/lotes/:lote', async (req, res) => {
+// Elimina todos los registros de un lote puntual (deshace una importación) — requiere clave de admin
+app.delete('/api/admin/lotes/:lote', requireAdminPassword, async (req, res) => {
   await db.read();
   const lote = req.params.lote;
   const antes = db.data.combustible.length;
@@ -93,8 +108,19 @@ app.delete('/api/admin/lotes/:lote', async (req, res) => {
   res.json({ ok: true, eliminados });
 });
 
-// Reinicia la base completa (equivalente a borrar data.json a mano)
-app.post('/api/admin/reset', async (req, res) => {
+// Elimina registros puntuales elegidos a mano (checkboxes en Registros) — requiere clave de admin
+app.post('/api/admin/borrar-registros', requireAdminPassword, async (req, res) => {
+  await db.read();
+  const ids = (req.body.ids || []).map(Number);
+  const antes = db.data.combustible.length;
+  db.data.combustible = db.data.combustible.filter(r => !ids.includes(r.id));
+  const eliminados = antes - db.data.combustible.length;
+  await db.write();
+  res.json({ ok: true, eliminados });
+});
+
+// Reinicia la base completa (equivalente a borrar data.json a mano) — requiere clave de admin
+app.post('/api/admin/reset', requireAdminPassword, async (req, res) => {
   await db.read();
   db.data.combustible = [];
   db.data.saldosReferencia = {};
@@ -415,6 +441,45 @@ app.post('/api/importar-historico', upload.single('archivo'), async (req, res) =
 // Re-aplica el diccionario de alias a todo lo que ya está cargado — útil
 // cada vez que se agrega una variante nueva a ALIAS_VEHICULOS, para no
 // tener que borrar data.json y reimportar todo de nuevo.
+// Detecta registros que probablemente sean el mismo evento real cargado dos veces
+// (misma fecha, mismo vehículo una vez normalizado, litros parecidos), típicamente
+// porque el histórico no reconoció una fila que ya venía de Physis.
+app.get('/api/admin/duplicados', async (req, res) => {
+  await db.read();
+  const porClave = {};
+  for (const r of db.data.combustible) {
+    const vehCanon = canonizarVehiculo(r.vehiculo) || r.vehiculo;
+    const clave = `${r.fecha}|${vehCanon}`;
+    if (!porClave[clave]) porClave[clave] = [];
+    porClave[clave].push(r);
+  }
+
+  const grupos = [];
+  for (const [clave, registros] of Object.entries(porClave)) {
+    if (registros.length < 2) continue;
+    // Dentro del mismo día+vehículo, agrupamos los que tienen litros compatibles entre sí
+    const usados = new Set();
+    for (let i = 0; i < registros.length; i++) {
+      if (usados.has(registros[i].id)) continue;
+      const grupo = [registros[i]];
+      for (let j = i + 1; j < registros.length; j++) {
+        if (usados.has(registros[j].id)) continue;
+        if (litrosCoinciden(Number(registros[i].litrosCargados), Number(registros[j].litrosCargados))) {
+          grupo.push(registros[j]);
+          usados.add(registros[j].id);
+        }
+      }
+      if (grupo.length > 1) {
+        usados.add(registros[i].id);
+        grupos.push({ fecha: registros[i].fecha, vehiculo: canonizarVehiculo(registros[i].vehiculo) || registros[i].vehiculo, registros: grupo });
+      }
+    }
+  }
+
+  grupos.sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  res.json(grupos);
+});
+
 app.post('/api/normalizar-vehiculos', async (req, res) => {
   await db.read();
   let cambios = 0;
