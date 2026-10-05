@@ -184,16 +184,32 @@ app.post('/api/importar-excel', upload.single('archivo'), async (req, res) => {
         ? f.Fecha.toISOString().split('T')[0]
         : String(f.Fecha);
 
-      const clave = `${fechaStr}|${f.Maquinaria}|${f.Cantidad}`;
+      // Algunas filas (Tipo "PTC") traen en "Maquinaria" un valor genérico/
+      // placeholder que no identifica el vehículo real (ej: un acoplado al
+      // azar). En esos casos, el dato real está en "Labor": para camiones
+      // trae la patente, para el resto trae la categoría del gasto
+      // (Ganadería, La Lonja, etc.) — usamos eso en vez de Maquinaria.
+      let nombreCrudo = f.Maquinaria || '';
+      if (f.Tipo === 'PTC') {
+        nombreCrudo = f.Labor || nombreCrudo;
+      }
+      const vehiculo = canonizarVehiculo(nombreCrudo) || nombreCrudo.trim();
+
+      let campo = f.descripcionDeposito ? f.descripcionDeposito.trim() : '';
+      if (!campo || campo.toLowerCase().includes('sin depósito') || campo.toLowerCase().includes('sin deposito')) {
+        campo = 'ESTACION DE SERVICIO';
+      }
+
+      const clave = `${fechaStr}|${vehiculo}|${f.Cantidad}`;
       if (clavesExistentes.has(clave)) continue;
       clavesExistentes.add(clave);
 
       db.data.combustible.push({
         id: Date.now() + agregados,
         fecha: fechaStr,
-        cisterna: f.Labor || '',
-        campo: f.descripcionDeposito ? f.descripcionDeposito.trim() : '',
-        vehiculo: canonizarVehiculo(f.Maquinaria) || (f.Maquinaria || ''),
+        cisterna: f.Labor ? f.Labor.trim() : '',
+        campo,
+        vehiculo,
         litrosCargados: f.Cantidad || 0,
         litrosConsumidos: 0,
         costo: f.Costo || 0,
