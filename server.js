@@ -457,37 +457,35 @@ app.post('/api/importar-historico', upload.single('archivo'), async (req, res) =
 // Re-aplica el diccionario de alias a todo lo que ya está cargado — útil
 // cada vez que se agrega una variante nueva a ALIAS_VEHICULOS, para no
 // tener que borrar data.json y reimportar todo de nuevo.
-// Detecta registros que probablemente sean el mismo evento real cargado dos veces
-// (misma fecha, mismo vehículo una vez normalizado, litros parecidos), típicamente
-// porque el histórico no reconoció una fila que ya venía de Physis.
+// Detecta un registro de Physis y uno del histórico que son EL MISMO evento
+// real cargado dos veces: misma fecha exacta, mismo campo exacto, mismos
+// litros exactos (sin tolerancia). No compara Physis contra Physis, ni
+// usa aproximaciones — litros distintos, por poco que sea, no es duplicado.
+function campoNormalizado(c) {
+  const u = (c || '').trim().toUpperCase();
+  return u.includes('DEPOSITO PRINCIPAL') ? 'PLANTA' : u;
+}
+
 app.get('/api/admin/duplicados', async (req, res) => {
   await db.read();
-  const porClave = {};
-  for (const r of db.data.combustible) {
-    const vehCanon = canonizarVehiculo(r.vehiculo) || r.vehiculo;
-    const clave = `${r.fecha}|${vehCanon}`;
-    if (!porClave[clave]) porClave[clave] = [];
-    porClave[clave].push(r);
-  }
+
+  const dePhysis = db.data.combustible.filter(r => r.origen === 'physis');
+  const deHistorico = db.data.combustible.filter(r => r.origen === 'historico');
 
   const grupos = [];
-  for (const [clave, registros] of Object.entries(porClave)) {
-    if (registros.length < 2) continue;
-    // Dentro del mismo día+vehículo, agrupamos los que tienen litros compatibles entre sí
-    const usados = new Set();
-    for (let i = 0; i < registros.length; i++) {
-      if (usados.has(registros[i].id)) continue;
-      const grupo = [registros[i]];
-      for (let j = i + 1; j < registros.length; j++) {
-        if (usados.has(registros[j].id)) continue;
-        if (litrosCoinciden(Number(registros[i].litrosCargados), Number(registros[j].litrosCargados))) {
-          grupo.push(registros[j]);
-          usados.add(registros[j].id);
-        }
-      }
-      if (grupo.length > 1) {
-        usados.add(registros[i].id);
-        grupos.push({ fecha: registros[i].fecha, vehiculo: canonizarVehiculo(registros[i].vehiculo) || registros[i].vehiculo, registros: grupo });
+  const historicoYaEmparejado = new Set();
+
+  for (const p of dePhysis) {
+    for (const h of deHistorico) {
+      if (historicoYaEmparejado.has(h.id)) continue;
+      if (
+        p.fecha === h.fecha &&
+        campoNormalizado(p.campo) === campoNormalizado(h.campo) &&
+        Number(p.litrosCargados) === Number(h.litrosCargados)
+      ) {
+        grupos.push({ fecha: p.fecha, campo: campoNormalizado(p.campo), registros: [p, h] });
+        historicoYaEmparejado.add(h.id);
+        break;
       }
     }
   }

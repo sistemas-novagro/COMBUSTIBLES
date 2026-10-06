@@ -1119,11 +1119,12 @@
           <input type="checkbox" class="chk-dup" data-id="${r.id}">
           <span style="flex:1;">
             <strong>${r.origen === 'physis' ? '⚙️ Physis' : r.origen === 'historico' ? '📜 Histórico' : '✍️ Manual'}</strong>
-            — ${r.litrosCargados} L — $${Number(r.costo || 0).toLocaleString('es-AR')} — campo: ${r.campo} — "${r.cisterna}"
+            — Vehículo/Maquinaria: <strong>${r.vehiculo}</strong>
+            — ${r.litrosCargados} L — $${Number(r.costo || 0).toLocaleString('es-AR')} — "${r.cisterna}"
           </span>
         </label>`).join('');
       return `<div class="card" style="background:#fff8e8; margin-bottom:10px;">
-        <strong>${g.fecha} — ${g.vehiculo}</strong>
+        <strong>${g.fecha} — ${g.campo}</strong>
         <div style="margin-top:6px;">${filas}</div>
       </div>`;
     }).join('') + `<button id="btnEliminarDuplicados" class="accion" style="background:var(--rojo);">Eliminar los marcados</button>`;
