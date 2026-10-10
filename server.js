@@ -7,6 +7,8 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import XLSX from 'xlsx';
 import basicAuth from 'express-basic-auth';
+import pdfParse from 'pdf-parse';
+import mammoth from 'mammoth';
 
 dotenv.config();
 
@@ -57,6 +59,152 @@ app.post('/api/combustible', async (req, res) => {
 app.get('/api/combustible', async (req, res) => {
   await db.read();
   res.json(db.data.combustible);
+});
+
+// --- Importador universal: recibe CUALQUIER archivo (Excel, PDF, Word, txt,
+// foto) y usa la API de Claude para extraer los datos, sin importar el
+// formato que tenga. Útil para reportes nuevos que el importador normal
+// no entiende, o para fotos de planillas en papel. Consume créditos de la API. ---
+
+const PROMPT_EXTRACCION = `Sos un asistente que extrae datos de cargas de combustible de documentos de la empresa agropecuaria NOVAGRO S.A.
+
+El documento puede tener cualquier formato: una tabla plana, un reporte agrupado por máquina, una foto de una planilla escrita a mano, etc.
+
+Extraé TODAS las cargas o consumos de combustible (GasOil, Nafta, Diesel) que encuentres, y devolvé SOLO un array JSON (sin texto antes ni después, sin \`\`\`), donde cada elemento tenga exactamente estos campos:
+
+- "fecha": en formato "YYYY-MM-DD"
+- "campo": el campo o depósito (ej: "PLANTA", "LA LONJA", "PALMAR CHICO", "SELENE", "ESTACION DE SERVICIO"). Si el documento dice "Depósito Principal" o similar, usá "PLANTA". Si no hay dato de campo, usá "SIN ESPECIFICAR".
+- "vehiculo": el nombre de la máquina, vehículo o cisterna (ej: "TRACTOR 6711/1 EFB75", "Retro CMF03", "MB2545 AH820MO"). Si el documento agrupa filas bajo un encabezado con el nombre de la máquina (formato jerárquico tipo "Partes de Trabajo"), usá ese nombre del encabezado para todas las filas debajo, no un texto genérico.
+- "litros": la cantidad de litros, como número (sin separador de miles, con punto decimal). Si el documento solo da el costo total y el precio por litro, calculá litros = costo ÷ precio.
+- "costo": el costo total en pesos, como número, si está disponible (si no, poné null)
+- "tipo": "entrada" si es una carga A una cisterna (ej: Labor dice "Carga de combustible en Cisterna"), o "salida" si es consumo de un vehículo/maquinaria
+
+Ignorá filas de "Total:" o subtotales. Ignorá filas que no sean de combustible (otros insumos).`;
+
+function detectarTipoArchivo(nombreArchivo) {
+  const ext = (nombreArchivo.split('.').pop() || '').toLowerCase();
+  if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) return 'imagen';
+  if (ext === 'pdf') return 'pdf';
+  if (ext === 'docx') return 'docx';
+  if (['xlsx', 'xls'].includes(ext)) return 'excel';
+  if (['csv', 'txt'].includes(ext)) return 'texto';
+  return 'desconocido';
+}
+
+app.post('/api/importar-inteligente', upload.single('archivo'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo.' });
+
+    const tipo = detectarTipoArchivo(req.file.originalname);
+    let contenidoMensaje;
+
+    if (tipo === 'imagen') {
+      const mediaType = req.file.mimetype || 'image/jpeg';
+      contenidoMensaje = [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: req.file.buffer.toString('base64') } },
+        { type: 'text', text: PROMPT_EXTRACCION },
+      ];
+    } else if (tipo === 'pdf') {
+      const datos = await pdfParse(req.file.buffer);
+      contenidoMensaje = [{ type: 'text', text: PROMPT_EXTRACCION + '\n\nTexto del documento:\n' + datos.text }];
+    } else if (tipo === 'docx') {
+      const resultado = await mammoth.extractRawText({ buffer: req.file.buffer });
+      contenidoMensaje = [{ type: 'text', text: PROMPT_EXTRACCION + '\n\nTexto del documento:\n' + resultado.value }];
+    } else if (tipo === 'excel') {
+      const workbook = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
+      let textoCompleto = '';
+      for (const nombreHoja of workbook.SheetNames) {
+        textoCompleto += `\n--- Hoja: ${nombreHoja} ---\n`;
+        textoCompleto += XLSX.utils.sheet_to_csv(workbook.Sheets[nombreHoja]);
+      }
+      contenidoMensaje = [{ type: 'text', text: PROMPT_EXTRACCION + '\n\nContenido del archivo (CSV):\n' + textoCompleto }];
+    } else if (tipo === 'texto') {
+      contenidoMensaje = [{ type: 'text', text: PROMPT_EXTRACCION + '\n\nContenido del archivo:\n' + req.file.buffer.toString('utf-8') }];
+    } else {
+      return res.status(400).json({ error: 'Formato de archivo no reconocido.' });
+    }
+
+    const mensaje = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 16000,
+      messages: [{ role: 'user', content: contenidoMensaje }],
+    });
+
+    let textoRespuesta = mensaje.content[0].text.trim();
+    textoRespuesta = textoRespuesta.replace(/^```json\s*/i, '').replace(/```\s*$/i, '');
+
+    let registrosExtraidos;
+    try {
+      registrosExtraidos = JSON.parse(textoRespuesta);
+    } catch (e) {
+      return res.status(500).json({ error: 'Claude no devolvió un JSON válido. Probá con un archivo más chico o más claro.' });
+    }
+
+    await db.read();
+    const lote = Date.now();
+    const porFecha = {};
+    for (const r of db.data.combustible) {
+      if (!porFecha[r.fecha]) porFecha[r.fecha] = [];
+      porFecha[r.fecha].push(r);
+    }
+
+    let agregados = 0;
+    let yaExistian = 0;
+
+    for (const reg of registrosExtraidos) {
+      if (!reg.fecha || !reg.vehiculo || reg.litros == null) continue;
+
+      const vehiculo = canonizarVehiculo(reg.vehiculo) || reg.vehiculo;
+      const candidatas = porFecha[reg.fecha] || [];
+      const yaExiste = candidatas.some(r => vehiculoCoincide(vehiculo, r.vehiculo) && litrosCoinciden(Number(reg.litros), Number(r.litrosCargados)));
+
+      if (yaExiste) { yaExistian++; continue; }
+
+      const nuevo = {
+        id: Date.now() + agregados,
+        fecha: reg.fecha,
+        cisterna: reg.tipo === 'entrada' ? 'Carga de combustible en Cisterna' : 'Consumo (importado con IA)',
+        campo: (reg.campo || 'SIN ESPECIFICAR').trim().toUpperCase(),
+        vehiculo,
+        litrosCargados: Number(reg.litros),
+        litrosConsumidos: reg.tipo === 'salida' ? Number(reg.litros) : 0,
+        costo: reg.costo != null ? Number(reg.costo) : 0,
+        combustible: 'GasOil',
+        lote,
+        origen: 'ia',
+      };
+      db.data.combustible.push(nuevo);
+      if (!porFecha[reg.fecha]) porFecha[reg.fecha] = [];
+      porFecha[reg.fecha].push(nuevo);
+      agregados++;
+    }
+
+    await db.write();
+    res.json({ ok: true, agregados, yaExistian, totalDetectados: registrosExtraidos.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'No se pudo procesar el archivo: ' + err.message });
+  }
+});
+
+// Exportar todos los datos actuales a un archivo Excel descargable
+app.get('/api/exportar', async (req, res) => {
+  await db.read();
+  const hoja = XLSX.utils.json_to_sheet(db.data.combustible.map(r => ({
+    Fecha: r.fecha,
+    Campo: r.campo,
+    Vehiculo: r.vehiculo,
+    'Cisterna/Labor': r.cisterna,
+    Litros: r.litrosCargados,
+    Costo: r.costo,
+    Origen: r.origen || 'manual',
+  })));
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, 'Combustible');
+  const buffer = XLSX.write(libro, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Disposition', 'attachment; filename="combustible_novagro.xlsx"');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buffer);
 });
 
 // Saldos de referencia por campo (el último saldo leído de la planilla, con su fecha)

@@ -227,7 +227,14 @@
   .campo-saldo-card .saldo-label { font-size: 0.75rem; opacity: 0.9; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
 
   #informe { background: white; padding: 20px; border-radius: 10px; margin-top: 16px; white-space: pre-wrap; display: none; border-left: 4px solid var(--rojo); line-height: 1.5; }
-  #resultadoImportar, #resultadoHistorico { margin-top: 10px; font-weight: bold; color: var(--verde-oscuro); }
+  #resultadoImportar, #resultadoHistorico, #resultadoInteligente { margin-top: 10px; font-weight: bold; color: var(--verde-oscuro); }
+
+  @media print {
+    body * { visibility: hidden; }
+    #tablaRegistrosImprimir, #tablaRegistrosImprimir * { visibility: visible; }
+    #tablaRegistrosImprimir { position: absolute; top: 0; left: 0; width: 100%; }
+    .no-imprimir { display: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -318,9 +325,14 @@
         </form>
       </div>
 
-      <table>
+      <div style="margin-bottom:10px; display:flex; gap:8px;" class="no-imprimir">
+        <button id="btnExportar" class="accion" style="background:var(--verde);">⬇️ Exportar a Excel</button>
+        <button id="btnImprimir" class="accion" style="background:#555;">🖨️ Imprimir</button>
+      </div>
+
+      <table id="tablaRegistrosImprimir">
         <thead>
-          <tr><th><input type="checkbox" id="chkTodos"></th><th>Fecha</th><th>Tipo</th><th>Campo</th><th>Vehículo/Cisterna</th><th>Litros</th><th>Costo</th><th>Acciones</th></tr>
+          <tr><th class="no-imprimir"><input type="checkbox" id="chkTodos"></th><th>Fecha</th><th>Tipo</th><th>Campo</th><th>Vehículo/Cisterna</th><th>Litros</th><th>Costo</th><th class="no-imprimir">Acciones</th></tr>
         </thead>
         <tbody id="tablaBody"></tbody>
       </table>
@@ -343,6 +355,14 @@
         <input type="file" id="inputExcel" accept=".xlsx,.xls">
         <button id="btnImportar" class="accion">Importar</button>
         <p id="resultadoImportar"></p>
+      </div>
+
+      <div class="card" style="border-top: 3px solid var(--dorado);">
+        <h3 style="margin-top:0;">🧠 Subir cualquier archivo (lectura inteligente con IA)</h3>
+        <p style="color:#777; font-size:0.85rem;">Excel, PDF, Word, CSV, o una foto de una planilla — Claude lee el documento y extrae los datos automáticamente, sea cual sea el formato. Usa créditos de tu API.</p>
+        <input type="file" id="inputInteligente" accept=".xlsx,.xls,.pdf,.docx,.csv,.txt,.jpg,.jpeg,.png">
+        <button id="btnImportarInteligente" class="accion" style="background:var(--dorado);">Leer con IA</button>
+        <p id="resultadoInteligente"></p>
       </div>
 
       <div class="card">
@@ -922,6 +942,38 @@
       resultado.textContent = `✅ Se importaron ${data.agregados} registros nuevos (de ${data.totalFilasExcel} filas totales).`;
       cargarDatos();
     }
+  });
+
+  document.getElementById('btnImportarInteligente').addEventListener('click', async () => {
+    const input = document.getElementById('inputInteligente');
+    const resultado = document.getElementById('resultadoInteligente');
+    if (!input.files.length) {
+      resultado.textContent = 'Elegí un archivo primero.';
+      return;
+    }
+    resultado.textContent = '🧠 Leyendo el documento con IA, puede tardar hasta un minuto...';
+    const formData = new FormData();
+    formData.append('archivo', input.files[0]);
+    try {
+      const res = await fetch('/api/importar-inteligente', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.error) {
+        resultado.textContent = '❌ ' + data.error;
+      } else {
+        resultado.textContent = `✅ Detectó ${data.totalDetectados} cargas — se agregaron ${data.agregados} nuevas (${data.yaExistian} ya estaban cargadas).`;
+        cargarDatos();
+      }
+    } catch (e) {
+      resultado.textContent = '❌ Error de conexión. Probá con un archivo más chico.';
+    }
+  });
+
+  document.getElementById('btnExportar').addEventListener('click', () => {
+    window.location.href = '/api/exportar';
+  });
+
+  document.getElementById('btnImprimir').addEventListener('click', () => {
+    window.print();
   });
 
   document.getElementById('btnImportarHistorico').addEventListener('click', async () => {
