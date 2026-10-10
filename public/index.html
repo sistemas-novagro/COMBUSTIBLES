@@ -380,6 +380,13 @@
         <p id="resultadoNormalizar"></p>
       </div>
 
+      <div class="card" style="border-top: 3px solid var(--naranja);">
+        <h3 style="margin-top:0;">📋 Datos del histórico que faltan en Physis</h3>
+        <p style="color:#777; font-size:0.85rem;">Para auditar antes de dejar de usar el Excel manual: filas que estaban cargadas a mano pero que todavía no tienen equivalente en Physis. Cargalas en Physis directamente (no acá) para que no se pierdan.</p>
+        <button id="btnBuscarFaltantes" class="accion" style="background:var(--naranja);">Buscar faltantes</button>
+        <div id="listaFaltantes" style="margin-top:14px;"></div>
+      </div>
+
       <div class="card" style="border-top: 3px solid var(--rojo);">
         <h3 style="margin-top:0;">🔎 Posibles duplicados</h3>
         <p style="color:#777; font-size:0.85rem;">Misma fecha, mismo vehículo, litros parecidos — probablemente el mismo evento cargado dos veces (una vez por Physis, otra por el histórico). Revisá cada grupo y dejá solo el correcto.</p>
@@ -1153,6 +1160,25 @@
   });
 
   // ---------- Detector de duplicados ----------
+  document.getElementById('btnBuscarFaltantes').addEventListener('click', async () => {
+    const contenedor = document.getElementById('listaFaltantes');
+    contenedor.innerHTML = '<p class="info-carga">Buscando...</p>';
+
+    const res = await fetch('/api/admin/faltantes-en-physis');
+    const faltantes = await res.json();
+
+    if (faltantes.length === 0) {
+      contenedor.innerHTML = '<p style="color:var(--verde-oscuro); font-weight:bold;">✅ Todo lo del histórico ya tiene equivalente en Physis.</p>';
+      return;
+    }
+
+    contenedor.innerHTML = `<p style="font-weight:bold; margin-bottom:10px;">${faltantes.length} registros del histórico no están en Physis:</p>` +
+      faltantes.map(r => `
+        <div style="padding:8px 0; border-bottom:1px solid #eee; font-size:0.85rem;">
+          <strong>${r.fecha}</strong> — ${r.campo} — <strong>${r.vehiculo}</strong> — ${r.litrosCargados} L — $${Number(r.costo || 0).toLocaleString('es-AR')} — "${r.cisterna}"
+        </div>`).join('');
+  });
+
   document.getElementById('btnBuscarDuplicados').addEventListener('click', async () => {
     const contenedor = document.getElementById('listaDuplicados');
     contenedor.innerHTML = '<p class="info-carga">Buscando...</p>';
