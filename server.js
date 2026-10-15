@@ -7,8 +7,13 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import XLSX from 'xlsx';
 import basicAuth from 'express-basic-auth';
-import pdfParse from 'pdf-parse';
+import { createRequire } from 'module';
 import mammoth from 'mammoth';
+
+// pdf-parse es una librería "vieja" (CommonJS) y no se importa bien con el
+// "import" normal de JavaScript moderno — hay que pedirla con este método especial.
+const require = createRequire(import.meta.url);
+const pdfParse = require('pdf-parse');
 
 dotenv.config();
 
@@ -640,6 +645,37 @@ app.get('/api/admin/duplicados', async (req, res) => {
 
   grupos.sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
   res.json(grupos);
+});
+
+// Lo opuesto a /duplicados: busca filas del histórico manual que NO tienen
+// ninguna equivalente en Physis — útil para auditar, antes de dejar de usar
+// el Excel manual, que todo lo que estaba cargado a mano ya esté también en
+// Physis. Usa comparación flexible (mismo criterio que el importador del
+// histórico) porque acá el objetivo es encontrar huecos reales, no exigir
+// una coincidencia exacta.
+app.get('/api/admin/faltantes-en-physis', async (req, res) => {
+  await db.read();
+
+  const dePhysis = db.data.combustible.filter(r => r.origen === 'physis');
+  const deHistorico = db.data.combustible.filter(r => r.origen === 'historico');
+
+  const porFecha = {};
+  for (const p of dePhysis) {
+    if (!porFecha[p.fecha]) porFecha[p.fecha] = [];
+    porFecha[p.fecha].push(p);
+  }
+
+  const faltantes = [];
+  for (const h of deHistorico) {
+    const candidatas = porFecha[h.fecha] || [];
+    const tieneEquivalente = candidatas.some(p =>
+      vehiculoCoincide(h.vehiculo, p.vehiculo) && litrosCoinciden(Number(h.litrosCargados), Number(p.litrosCargados))
+    );
+    if (!tieneEquivalente) faltantes.push(h);
+  }
+
+  faltantes.sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  res.json(faltantes);
 });
 
 app.post('/api/normalizar-vehiculos', async (req, res) => {
