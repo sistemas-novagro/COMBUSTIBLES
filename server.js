@@ -103,18 +103,26 @@ app.post('/api/importar-inteligente', upload.single('archivo'), async (req, res)
     const tipo = detectarTipoArchivo(req.file.originalname);
     let contenidoMensaje;
 
+    // Si la persona indicó a mano a qué campo corresponde (por ejemplo, una
+    // foto de un cuaderno que no dice el campo en cada fila), se lo avisamos
+    // a Claude para que lo use en todas las filas que extraiga.
+    const campoHint = (req.body.campoHint || '').trim();
+    const promptConHint = campoHint
+      ? PROMPT_EXTRACCION + `\n\nIMPORTANTE: este documento completo corresponde al campo/depósito "${campoHint}". Usá ese valor en el campo "campo" de TODAS las filas que extraigas, salvo que una fila diga explícitamente otro campo distinto.`
+      : PROMPT_EXTRACCION;
+
     if (tipo === 'imagen') {
       const mediaType = req.file.mimetype || 'image/jpeg';
       contenidoMensaje = [
         { type: 'image', source: { type: 'base64', media_type: mediaType, data: req.file.buffer.toString('base64') } },
-        { type: 'text', text: PROMPT_EXTRACCION },
+        { type: 'text', text: promptConHint },
       ];
     } else if (tipo === 'pdf') {
       const datos = await pdfParse(req.file.buffer);
-      contenidoMensaje = [{ type: 'text', text: PROMPT_EXTRACCION + '\n\nTexto del documento:\n' + datos.text }];
+      contenidoMensaje = [{ type: 'text', text: promptConHint + '\n\nTexto del documento:\n' + datos.text }];
     } else if (tipo === 'docx') {
       const resultado = await mammoth.extractRawText({ buffer: req.file.buffer });
-      contenidoMensaje = [{ type: 'text', text: PROMPT_EXTRACCION + '\n\nTexto del documento:\n' + resultado.value }];
+      contenidoMensaje = [{ type: 'text', text: promptConHint + '\n\nTexto del documento:\n' + resultado.value }];
     } else if (tipo === 'excel') {
       const workbook = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
       let textoCompleto = '';
@@ -122,9 +130,9 @@ app.post('/api/importar-inteligente', upload.single('archivo'), async (req, res)
         textoCompleto += `\n--- Hoja: ${nombreHoja} ---\n`;
         textoCompleto += XLSX.utils.sheet_to_csv(workbook.Sheets[nombreHoja]);
       }
-      contenidoMensaje = [{ type: 'text', text: PROMPT_EXTRACCION + '\n\nContenido del archivo (CSV):\n' + textoCompleto }];
+      contenidoMensaje = [{ type: 'text', text: promptConHint + '\n\nContenido del archivo (CSV):\n' + textoCompleto }];
     } else if (tipo === 'texto') {
-      contenidoMensaje = [{ type: 'text', text: PROMPT_EXTRACCION + '\n\nContenido del archivo:\n' + req.file.buffer.toString('utf-8') }];
+      contenidoMensaje = [{ type: 'text', text: promptConHint + '\n\nContenido del archivo:\n' + req.file.buffer.toString('utf-8') }];
     } else {
       return res.status(400).json({ error: 'Formato de archivo no reconocido.' });
     }

@@ -361,6 +361,8 @@
         <h3 style="margin-top:0;">🧠 Subir cualquier archivo (lectura inteligente con IA)</h3>
         <p style="color:#777; font-size:0.85rem;">Excel, PDF, Word, CSV, o una foto de una planilla — Claude lee el documento y extrae los datos automáticamente, sea cual sea el formato. Usa créditos de tu API.</p>
         <input type="file" id="inputInteligente" accept=".xlsx,.xls,.pdf,.docx,.csv,.txt,.jpg,.jpeg,.png">
+        <label style="margin-top:10px;">¿A qué campo corresponde? <span style="font-weight:normal; color:#777;">(opcional — completalo si el documento no lo dice, como una foto de un cuaderno)</span></label>
+        <input type="text" id="campoInteligente" placeholder="Ej: PALMAR CHICO">
         <button id="btnImportarInteligente" class="accion" style="background:var(--dorado);">Leer con IA</button>
         <p id="resultadoInteligente"></p>
       </div>
@@ -961,6 +963,8 @@
     resultado.textContent = '🧠 Leyendo el documento con IA, puede tardar hasta un minuto...';
     const formData = new FormData();
     formData.append('archivo', input.files[0]);
+    const campoHint = document.getElementById('campoInteligente').value.trim();
+    if (campoHint) formData.append('campoHint', campoHint);
     try {
       const res = await fetch('/api/importar-inteligente', { method: 'POST', body: formData });
       const data = await res.json();
