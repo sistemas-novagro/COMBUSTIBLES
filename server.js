@@ -144,13 +144,23 @@ app.post('/api/importar-inteligente', upload.single('archivo'), async (req, res)
     });
 
     let textoRespuesta = mensaje.content[0].text.trim();
-    textoRespuesta = textoRespuesta.replace(/^```json\s*/i, '').replace(/```\s*$/i, '');
+    textoRespuesta = textoRespuesta.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
+
+    // A veces Claude agrega alguna aclaración en texto antes o después del
+    // JSON (ej: "algunos números no se leen bien en la foto..."). Nos
+    // quedamos solo con lo que hay entre el primer "[" y el último "]".
+    const inicio = textoRespuesta.indexOf('[');
+    const fin = textoRespuesta.lastIndexOf(']');
+    if (inicio !== -1 && fin !== -1 && fin > inicio) {
+      textoRespuesta = textoRespuesta.slice(inicio, fin + 1);
+    }
 
     let registrosExtraidos;
     try {
       registrosExtraidos = JSON.parse(textoRespuesta);
     } catch (e) {
-      return res.status(500).json({ error: 'Claude no devolvió un JSON válido. Probá con un archivo más chico o más claro.' });
+      console.error('Respuesta de Claude que no se pudo parsear:', mensaje.content[0].text);
+      return res.status(500).json({ error: 'Claude no devolvió un JSON válido. Probá con un archivo más chico o más claro, o revisá los logs del servidor para ver qué respondió.' });
     }
 
     await db.read();
