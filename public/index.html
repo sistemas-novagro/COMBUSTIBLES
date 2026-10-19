@@ -967,15 +967,25 @@
     if (campoHint) formData.append('campoHint', campoHint);
     try {
       const res = await fetch('/api/importar-inteligente', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (data.error) {
-        resultado.textContent = '❌ ' + data.error;
+      const textoCrudo = await res.text();
+      let data;
+      try {
+        data = JSON.parse(textoCrudo);
+      } catch (e) {
+        resultado.textContent = `❌ El servidor respondió algo raro (status ${res.status}): ${textoCrudo.slice(0, 300)}`;
+        return;
+      }
+
+      if (!res.ok || data.error) {
+        resultado.textContent = `❌ (status ${res.status}) ` + (data.error || JSON.stringify(data));
+      } else if (data.totalDetectados === undefined) {
+        resultado.textContent = `⚠️ Respuesta inesperada del servidor: ${JSON.stringify(data)}`;
       } else {
         resultado.textContent = `✅ Detectó ${data.totalDetectados} cargas — se agregaron ${data.agregados} nuevas (${data.yaExistian} ya estaban cargadas).`;
         cargarDatos();
       }
     } catch (e) {
-      resultado.textContent = '❌ Error de conexión. Probá con un archivo más chico.';
+      resultado.textContent = '❌ Error de conexión: ' + e.message;
     }
   });
 
