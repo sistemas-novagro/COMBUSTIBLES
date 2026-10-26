@@ -82,7 +82,9 @@ Extraé TODAS las cargas o consumos de combustible (GasOil, Nafta, Diesel) que e
 - "vehiculo": el nombre de la máquina, vehículo o cisterna (ej: "TRACTOR 6711/1 EFB75", "Retro CMF03", "MB2545 AH820MO"). Si el documento agrupa filas bajo un encabezado con el nombre de la máquina (formato jerárquico tipo "Partes de Trabajo"), usá ese nombre del encabezado para todas las filas debajo, no un texto genérico.
 - "litros": la cantidad de litros, como número (sin separador de miles, con punto decimal). Si el documento solo da el costo total y el precio por litro, calculá litros = costo ÷ precio.
 - "costo": el costo total en pesos, como número, si está disponible (si no, poné null)
-- "tipo": "entrada" si es una carga A una cisterna (ej: Labor dice "Carga de combustible en Cisterna"), o "salida" si es consumo de un vehículo/maquinaria
+- "tipo": "entrada" si es una carga A una cisterna (ej: Labor dice "Carga de combustible en Cisterna", o hay un valor en la columna "ENTRADA"), o "salida" si es consumo de un vehículo/maquinaria (valor en la columna "SALIDA")
+
+IMPORTANTE sobre cuadernos/planillas manuscritas con varias columnas numéricas: es muy común que haya columnas de "KM" (kilometraje del vehículo) y "RELOJ" (horómetro) AL LADO de las columnas de "ENTRADA" y "SALIDA" de combustible. El KM y el RELOJ son lecturas del odómetro/horómetro del vehículo — NO son litros, y suelen ser números mucho más grandes (varios miles) que una carga de combustible típica (normalmente entre 5 y 700 litros). Los litros SIEMPRE salen de la columna "ENTRADA" o "SALIDA" (o equivalente: "Carga", "Consumo"), nunca de "KM" ni de "RELOJ". Si no estás segura/o de qué columna es cuál, fijate en el encabezado de la tabla antes de asignar el valor.
 
 Ignorá filas de "Total:" o subtotales. Ignorá filas que no sean de combustible (otros insumos).`;
 
@@ -107,9 +109,14 @@ app.post('/api/importar-inteligente', upload.single('archivo'), async (req, res)
     // foto de un cuaderno que no dice el campo en cada fila), se lo avisamos
     // a Claude para que lo use en todas las filas que extraiga.
     const campoHint = (req.body.campoHint || '').trim();
-    const promptConHint = campoHint
-      ? PROMPT_EXTRACCION + `\n\nIMPORTANTE: este documento completo corresponde al campo/depósito "${campoHint}". Usá ese valor en el campo "campo" de TODAS las filas que extraigas, salvo que una fila diga explícitamente otro campo distinto.`
-      : PROMPT_EXTRACCION;
+    const desdeHint = (req.body.desde || '').trim();
+    let promptConHint = PROMPT_EXTRACCION;
+    if (campoHint) {
+      promptConHint += `\n\nIMPORTANTE: este documento completo corresponde al campo/depósito "${campoHint}". Usá ese valor en el campo "campo" de TODAS las filas que extraigas, salvo que una fila diga explícitamente otro campo distinto.`;
+    }
+    if (desdeHint) {
+      promptConHint += `\n\nIMPORTANTE: ignorá (no incluyas en el resultado) cualquier fila con fecha ANTERIOR al ${desdeHint}. Solo extraé movimientos desde esa fecha en adelante.`;
+    }
 
     if (tipo === 'imagen') {
       const mediaType = req.file.mimetype || 'image/jpeg';
@@ -213,7 +220,15 @@ app.post('/api/importar-inteligente', upload.single('archivo'), async (req, res)
 // Exportar todos los datos actuales a un archivo Excel descargable
 app.get('/api/exportar', async (req, res) => {
   await db.read();
-  const hoja = XLSX.utils.json_to_sheet(db.data.combustible.map(r => ({
+
+  // Rango de fechas opcional: /api/exportar?desde=2026-01-01&hasta=2026-03-31
+  const { desde, hasta } = req.query;
+  let datos = db.data.combustible;
+  if (desde) datos = datos.filter(r => r.fecha >= desde);
+  if (hasta) datos = datos.filter(r => r.fecha <= hasta);
+  datos = [...datos].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+
+  const hoja = XLSX.utils.json_to_sheet(datos.map(r => ({
     Fecha: r.fecha,
     Campo: r.campo,
     Vehiculo: r.vehiculo,
@@ -225,7 +240,9 @@ app.get('/api/exportar', async (req, res) => {
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, 'Combustible');
   const buffer = XLSX.write(libro, { type: 'buffer', bookType: 'xlsx' });
-  res.setHeader('Content-Disposition', 'attachment; filename="combustible_novagro.xlsx"');
+
+  const sufijoNombre = (desde || hasta) ? `_${desde || 'inicio'}_a_${hasta || 'hoy'}` : '';
+  res.setHeader('Content-Disposition', `attachment; filename="combustible_novagro${sufijoNombre}.xlsx"`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buffer);
 });
@@ -349,11 +366,14 @@ app.post('/api/importar-excel', upload.single('archivo'), async (req, res) => {
       db.data.combustible.map(r => `${r.fecha}|${r.vehiculo}|${r.litrosCargados}`)
     );
 
+    const fechaMinima = (req.body.desde || '').trim();
     let agregados = 0;
     for (const f of filasCombustible) {
       const fechaStr = f.Fecha instanceof Date
         ? f.Fecha.toISOString().split('T')[0]
         : String(f.Fecha);
+
+      if (fechaMinima && fechaStr < fechaMinima) continue;
 
       // Algunas filas (Tipo "PTC") traen en "Maquinaria" un valor genérico/
       // placeholder que no identifica el vehículo real (ej: un acoplado al
@@ -523,7 +543,10 @@ app.post('/api/importar-historico', upload.single('archivo'), async (req, res) =
       });
     }
 
+    const fechaMinima = (req.body.desde || '').trim();
+
     function agregarRegistro(fecha, vehiculo, litros, tipo, campo, cisterna, costo, reloj) {
+      if (fechaMinima && fecha < fechaMinima) return;
       if (yaExisteEnPhysis(fecha, vehiculo, litros, reloj)) { yaExistian++; return; }
       const nombreCanonico = canonizarVehiculo(vehiculo) || vehiculo; // usa el nombre oficial si está en el diccionario
       const nuevo = {
@@ -671,6 +694,10 @@ app.get('/api/admin/duplicados', async (req, res) => {
 // Physis. Usa comparación flexible (mismo criterio que el importador del
 // histórico) porque acá el objetivo es encontrar huecos reales, no exigir
 // una coincidencia exacta.
+// Acepta filtros opcionales por query string:
+//   ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD  (para una fecha exacta, mandá el mismo valor en ambos)
+//   ?vehiculo=texto  (busca por coincidencia parcial, sin importar mayúsculas)
+//   ?pagina=1&porPagina=10  (paginado; por defecto 10 por página)
 app.get('/api/admin/faltantes-en-physis', async (req, res) => {
   await db.read();
 
@@ -683,7 +710,7 @@ app.get('/api/admin/faltantes-en-physis', async (req, res) => {
     porFecha[p.fecha].push(p);
   }
 
-  const faltantes = [];
+  let faltantes = [];
   for (const h of deHistorico) {
     const candidatas = porFecha[h.fecha] || [];
     const tieneEquivalente = candidatas.some(p =>
@@ -692,22 +719,24 @@ app.get('/api/admin/faltantes-en-physis', async (req, res) => {
     if (!tieneEquivalente) faltantes.push(h);
   }
 
-  faltantes.sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
-  res.json(faltantes);
-});
+  const { desde, hasta, vehiculo } = req.query;
+  if (desde) faltantes = faltantes.filter(r => r.fecha >= desde);
+  if (hasta) faltantes = faltantes.filter(r => r.fecha <= hasta);
+  if (vehiculo) {
+    const busqueda = vehiculo.trim().toLowerCase();
+    faltantes = faltantes.filter(r => (r.vehiculo || '').toLowerCase().includes(busqueda));
+  }
 
-app.post('/api/normalizar-vehiculos', async (req, res) => {
-  await db.read();
-  let cambios = 0;
-  db.data.combustible.forEach(r => {
-    const canonico = canonizarVehiculo(r.vehiculo);
-    if (canonico && r.vehiculo !== canonico) {
-      r.vehiculo = canonico;
-      cambios++;
-    }
-  });
-  await db.write();
-  res.json({ ok: true, cambios });
+  faltantes.sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+
+  const totalFiltrados = faltantes.length;
+  const porPagina = Math.max(1, parseInt(req.query.porPagina) || 10);
+  const pagina = Math.max(1, parseInt(req.query.pagina) || 1);
+  const inicio = (pagina - 1) * porPagina;
+  const pagina_datos = faltantes.slice(inicio, inicio + porPagina);
+  const totalPaginas = Math.max(1, Math.ceil(totalFiltrados / porPagina));
+
+  res.json({ registros: pagina_datos, totalFiltrados, pagina, totalPaginas, porPagina });
 });
 
 app.post('/api/informe', async (req, res) => {

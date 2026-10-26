@@ -325,9 +325,20 @@
         </form>
       </div>
 
-      <div style="margin-bottom:10px; display:flex; gap:8px;" class="no-imprimir">
-        <button id="btnExportar" class="accion" style="background:var(--verde);">⬇️ Exportar a Excel</button>
-        <button id="btnImprimir" class="accion" style="background:#555;">🖨️ Imprimir</button>
+      <div class="card no-imprimir" style="padding:14px 20px;">
+        <div style="display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+          <div>
+            <label style="margin-top:0;">Exportar desde</label>
+            <input type="date" id="exportarDesde">
+          </div>
+          <div>
+            <label style="margin-top:0;">hasta</label>
+            <input type="date" id="exportarHasta">
+          </div>
+          <button id="btnExportar" class="accion" style="background:var(--verde); margin-top:0;">⬇️ Exportar a Excel</button>
+          <button id="btnImprimir" class="accion" style="background:#555; margin-top:0;">🖨️ Imprimir</button>
+        </div>
+        <p style="color:#777; font-size:0.78rem; margin:8px 0 0;">Dejá las fechas en blanco para exportar todo el histórico.</p>
       </div>
 
       <table id="tablaRegistrosImprimir">
@@ -350,43 +361,64 @@
     </section>
 
     <section id="tab-importar" class="tab-panel">
-      <div class="card">
-        <h3 style="margin-top:0;">Importar Excel de Physis</h3>
-        <input type="file" id="inputExcel" accept=".xlsx,.xls">
-        <button id="btnImportar" class="accion">Importar</button>
-        <p id="resultadoImportar"></p>
+      <div class="card" style="border-top: 3px solid var(--naranja);">
+        <h3 style="margin-top:0;">📥 Importar datos</h3>
+
+        <label style="margin-top:0;">¿De dónde viene el archivo?</label>
+        <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:6px;">
+          <label style="font-weight:normal; display:flex; align-items:center; gap:6px;">
+            <input type="radio" name="tipoImportacion" value="physis" checked> ⚙️ Excel de Physis (sistema)
+          </label>
+          <label style="font-weight:normal; display:flex; align-items:center; gap:6px;">
+            <input type="radio" name="tipoImportacion" value="historico"> 📜 Excel manual (histórico)
+          </label>
+          <label style="font-weight:normal; display:flex; align-items:center; gap:6px;">
+            <input type="radio" name="tipoImportacion" value="ia"> 🧠 Foto de cuaderno / otro formato (IA)
+          </label>
+        </div>
+
+        <p id="descripcionTipoImportacion" style="color:#777; font-size:0.85rem; margin-top:10px;">El reporte plano que exporta Physis (rptMaquinarias) — litros y campo exactos.</p>
+
+        <label style="margin-top:14px;">Archivo</label>
+        <input type="file" id="inputUnificado">
+
+        <div id="campoUnificadoWrap" style="display:none;">
+          <label>¿A qué campo corresponde? <span style="font-weight:normal; color:#777;">(opcional — completalo si el documento no lo dice, como una foto de un cuaderno)</span></label>
+          <input type="text" id="campoUnificado" placeholder="Ej: PALMAR CHICO">
+        </div>
+
+        <label style="margin-top:14px;">Solo cargar movimientos desde <span style="font-weight:normal; color:#777;">(opcional)</span></label>
+        <input type="date" id="desdeUnificado">
+
+        <button id="btnImportarUnificado" class="accion" style="background:var(--naranja); margin-top:16px;">Importar</button>
+        <p id="resultadoUnificado"></p>
       </div>
 
-      <div class="card" style="border-top: 3px solid var(--dorado);">
-        <h3 style="margin-top:0;">🧠 Subir cualquier archivo (lectura inteligente con IA)</h3>
-        <p style="color:#777; font-size:0.85rem;">Excel, PDF, Word, CSV, o una foto de una planilla — Claude lee el documento y extrae los datos automáticamente, sea cual sea el formato. Usa créditos de tu API.</p>
-        <input type="file" id="inputInteligente" accept=".xlsx,.xls,.pdf,.docx,.csv,.txt,.jpg,.jpeg,.png">
-        <label style="margin-top:10px;">¿A qué campo corresponde? <span style="font-weight:normal; color:#777;">(opcional — completalo si el documento no lo dice, como una foto de un cuaderno)</span></label>
-        <input type="text" id="campoInteligente" placeholder="Ej: PALMAR CHICO">
-        <button id="btnImportarInteligente" class="accion" style="background:var(--dorado);">Leer con IA</button>
-        <p id="resultadoInteligente"></p>
-      </div>
-
-      <div class="card">
-        <h3 style="margin-top:0;">Importar histórico (Informe Cisternas y Campos)</h3>
-        <p style="color:#777; font-size:0.85rem;">Este es el archivo con las hojas PLANTA, PALMAR CHICO, LA LONJA, SELENE y ESTACIONES.</p>
-        <input type="file" id="inputHistorico" accept=".xlsx,.xls">
-        <button id="btnImportarHistorico" class="accion">Importar histórico</button>
-        <p id="resultadoHistorico"></p>
-      </div>
-
-      <div class="card">
-        <h3 style="margin-top:0;">Limpiar nombres de vehículos</h3>
-        <p style="color:#777; font-size:0.85rem;">Aplica el diccionario de alias (MF RETRO → Retro CMF03, etc.) a todo lo ya cargado. Usalo cada vez que te confirme que agregué una equivalencia nueva.</p>
-        <button id="btnNormalizar" class="accion" style="background:var(--dorado);">Normalizar nombres</button>
-        <p id="resultadoNormalizar"></p>
-      </div>
 
       <div class="card" style="border-top: 3px solid var(--naranja);">
         <h3 style="margin-top:0;">📋 Datos del histórico que faltan en Physis</h3>
         <p style="color:#777; font-size:0.85rem;">Para auditar antes de dejar de usar el Excel manual: filas que estaban cargadas a mano pero que todavía no tienen equivalente en Physis. Cargalas en Physis directamente (no acá) para que no se pierdan.</p>
-        <button id="btnBuscarFaltantes" class="accion" style="background:var(--naranja);">Buscar faltantes</button>
+
+        <div style="display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-top:10px;">
+          <div>
+            <label style="margin-top:0;">Desde</label>
+            <input type="date" id="faltantesDesde">
+          </div>
+          <div>
+            <label style="margin-top:0;">Hasta</label>
+            <input type="date" id="faltantesHasta">
+          </div>
+          <div>
+            <label style="margin-top:0;">Vehículo / Maquinaria / Camión</label>
+            <input type="text" id="faltantesVehiculo" placeholder="Ej: 6711, Retro, MB2545...">
+          </div>
+          <button id="btnBuscarFaltantes" class="accion" style="background:var(--naranja); margin-top:0;">Buscar</button>
+          <button id="btnLimpiarFaltantes" class="accion" style="background:#eee; color:#333; margin-top:0;">Limpiar filtros</button>
+        </div>
+        <p style="color:#777; font-size:0.78rem; margin-top:6px;">Para una sola fecha, poné el mismo día en "Desde" y "Hasta". Dejá todo en blanco para ver el total.</p>
+
         <div id="listaFaltantes" style="margin-top:14px;"></div>
+        <div class="paginacion" id="paginacionFaltantes" style="display:none;"></div>
       </div>
 
       <div class="card" style="border-top: 3px solid var(--rojo);">
@@ -933,40 +965,69 @@
     cargarDatos();
   });
 
-  document.getElementById('btnImportar').addEventListener('click', async () => {
-    const input = document.getElementById('inputExcel');
-    const resultado = document.getElementById('resultadoImportar');
-    if (!input.files.length) {
-      resultado.textContent = 'Elegí un archivo primero.';
-      return;
-    }
-    resultado.textContent = 'Importando...';
-    const formData = new FormData();
-    formData.append('archivo', input.files[0]);
-    const res = await fetch('/api/importar-excel', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (data.error) {
-      resultado.textContent = '❌ ' + data.error;
-    } else {
-      resultado.textContent = `✅ Se importaron ${data.agregados} registros nuevos (de ${data.totalFilasExcel} filas totales).`;
-      cargarDatos();
-    }
-  });
+  // ---------- Importar (unificado: Physis / histórico / IA) ----------
+  const CONFIG_IMPORTACION = {
+    physis: {
+      descripcion: 'El reporte plano que exporta Physis (rptMaquinarias) — litros y campo exactos.',
+      accept: '.xlsx,.xls',
+      endpoint: '/api/importar-excel',
+      mostrarCampo: false,
+    },
+    historico: {
+      descripcion: 'El Excel manual con las hojas PLANTA, PALMAR CHICO, LA LONJA, SELENE y ESTACIONES.',
+      accept: '.xlsx,.xls',
+      endpoint: '/api/importar-historico',
+      mostrarCampo: false,
+    },
+    ia: {
+      descripcion: 'Cualquier otro formato: PDF, Word, CSV, o una foto de una planilla/cuaderno — Claude lee el contenido. Usa créditos de tu API.',
+      accept: '.xlsx,.xls,.pdf,.docx,.csv,.txt,.jpg,.jpeg,.png',
+      endpoint: '/api/importar-inteligente',
+      mostrarCampo: true,
+    },
+  };
 
-  document.getElementById('btnImportarInteligente').addEventListener('click', async () => {
-    const input = document.getElementById('inputInteligente');
-    const resultado = document.getElementById('resultadoInteligente');
+  function actualizarFormularioImportacion() {
+    const tipo = document.querySelector('input[name="tipoImportacion"]:checked').value;
+    const config = CONFIG_IMPORTACION[tipo];
+    document.getElementById('descripcionTipoImportacion').textContent = config.descripcion;
+    document.getElementById('inputUnificado').setAttribute('accept', config.accept);
+    document.getElementById('campoUnificadoWrap').style.display = config.mostrarCampo ? 'block' : 'none';
+  }
+
+  document.querySelectorAll('input[name="tipoImportacion"]').forEach(radio => {
+    radio.addEventListener('change', actualizarFormularioImportacion);
+  });
+  actualizarFormularioImportacion();
+
+  document.getElementById('btnImportarUnificado').addEventListener('click', async () => {
+    const tipo = document.querySelector('input[name="tipoImportacion"]:checked').value;
+    const config = CONFIG_IMPORTACION[tipo];
+    const input = document.getElementById('inputUnificado');
+    const resultado = document.getElementById('resultadoUnificado');
+
     if (!input.files.length) {
       resultado.textContent = 'Elegí un archivo primero.';
       return;
     }
-    resultado.textContent = '🧠 Leyendo el documento con IA, puede tardar hasta un minuto...';
+
     const formData = new FormData();
     formData.append('archivo', input.files[0]);
-    const campoHint = document.getElementById('campoInteligente').value.trim();
-    if (campoHint) formData.append('campoHint', campoHint);
+
+    const desde = document.getElementById('desdeUnificado').value;
+    if (desde) formData.append('desde', desde);
+
+    if (config.mostrarCampo) {
+      const campoHint = document.getElementById('campoUnificado').value.trim();
+      if (campoHint) formData.append('campoHint', campoHint);
+    }
+
+    resultado.textContent = tipo === 'ia'
+      ? '🧠 Leyendo el documento con IA, puede tardar hasta un minuto...'
+      : 'Importando...';
+
     try {
-      const res = await fetch('/api/importar-inteligente', { method: 'POST', body: formData });
+      const res = await fetch(config.endpoint, { method: 'POST', body: formData });
       const textoCrudo = await res.text();
       let data;
       try {
@@ -978,44 +1039,36 @@
 
       if (!res.ok || data.error) {
         resultado.textContent = `❌ (status ${res.status}) ` + (data.error || JSON.stringify(data));
-      } else if (data.totalDetectados === undefined) {
-        resultado.textContent = `⚠️ Respuesta inesperada del servidor: ${JSON.stringify(data)}`;
-      } else {
-        resultado.textContent = `✅ Detectó ${data.totalDetectados} cargas — se agregaron ${data.agregados} nuevas (${data.yaExistian} ya estaban cargadas).`;
-        cargarDatos();
+        return;
       }
+
+      if (tipo === 'ia') {
+        resultado.textContent = `✅ Detectó ${data.totalDetectados} cargas — se agregaron ${data.agregados} nuevas (${data.yaExistian} ya estaban cargadas).`;
+      } else if (tipo === 'physis') {
+        resultado.textContent = `✅ Se importaron ${data.agregados} registros nuevos (de ${data.totalFilasExcel} filas totales).`;
+      } else {
+        resultado.textContent = `✅ Se importaron ${data.agregados} registros nuevos (de ${data.filasProcesadas} filas procesadas).`;
+      }
+      cargarDatos();
     } catch (e) {
       resultado.textContent = '❌ Error de conexión: ' + e.message;
     }
   });
 
   document.getElementById('btnExportar').addEventListener('click', () => {
-    window.location.href = '/api/exportar';
+    const desde = document.getElementById('exportarDesde').value;
+    const hasta = document.getElementById('exportarHasta').value;
+    const params = new URLSearchParams();
+    if (desde) params.append('desde', desde);
+    if (hasta) params.append('hasta', hasta);
+    const query = params.toString();
+    window.location.href = '/api/exportar' + (query ? '?' + query : '');
   });
 
   document.getElementById('btnImprimir').addEventListener('click', () => {
     window.print();
   });
 
-  document.getElementById('btnImportarHistorico').addEventListener('click', async () => {
-    const input = document.getElementById('inputHistorico');
-    const resultado = document.getElementById('resultadoHistorico');
-    if (!input.files.length) {
-      resultado.textContent = 'Elegí un archivo primero.';
-      return;
-    }
-    resultado.textContent = 'Importando histórico, puede tardar unos segundos...';
-    const formData = new FormData();
-    formData.append('archivo', input.files[0]);
-    const res = await fetch('/api/importar-historico', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (data.error) {
-      resultado.textContent = '❌ ' + data.error;
-    } else {
-      resultado.textContent = `✅ Se importaron ${data.agregados} registros nuevos (de ${data.filasProcesadas} filas procesadas).`;
-      cargarDatos();
-    }
-  });
 
   document.getElementById('btnInforme').addEventListener('click', async () => {
     const div = document.getElementById('informe');
@@ -1164,33 +1217,65 @@
     if (btn.dataset.accion === 'eliminar') eliminarRegistro(id);
   });
 
-  document.getElementById('btnNormalizar').addEventListener('click', async () => {
-    const resultado = document.getElementById('resultadoNormalizar');
-    resultado.textContent = 'Normalizando...';
-    const res = await fetch('/api/normalizar-vehiculos', { method: 'POST' });
-    const data = await res.json();
-    resultado.textContent = `✅ Se actualizaron ${data.cambios} registros con el nombre oficial.`;
-    cargarDatos();
-  });
+  // ---------- Faltantes en Physis (con filtros y paginación) ----------
+  let paginaFaltantesActual = 1;
 
-  // ---------- Detector de duplicados ----------
-  document.getElementById('btnBuscarFaltantes').addEventListener('click', async () => {
+  async function buscarFaltantes(pagina = 1) {
+    paginaFaltantesActual = pagina;
     const contenedor = document.getElementById('listaFaltantes');
+    const paginacionEl = document.getElementById('paginacionFaltantes');
     contenedor.innerHTML = '<p class="info-carga">Buscando...</p>';
+    paginacionEl.style.display = 'none';
 
-    const res = await fetch('/api/admin/faltantes-en-physis');
-    const faltantes = await res.json();
+    const desde = document.getElementById('faltantesDesde').value;
+    const hasta = document.getElementById('faltantesHasta').value;
+    const vehiculo = document.getElementById('faltantesVehiculo').value.trim();
 
-    if (faltantes.length === 0) {
-      contenedor.innerHTML = '<p style="color:var(--verde-oscuro); font-weight:bold;">✅ Todo lo del histórico ya tiene equivalente en Physis.</p>';
+    const params = new URLSearchParams({ pagina, porPagina: 10 });
+    if (desde) params.append('desde', desde);
+    if (hasta) params.append('hasta', hasta);
+    if (vehiculo) params.append('vehiculo', vehiculo);
+
+    const res = await fetch('/api/admin/faltantes-en-physis?' + params.toString());
+    const data = await res.json();
+
+    if (data.totalFiltrados === 0) {
+      contenedor.innerHTML = '<p style="color:var(--verde-oscuro); font-weight:bold;">✅ No se encontraron faltantes con estos filtros.</p>';
       return;
     }
 
-    contenedor.innerHTML = `<p style="font-weight:bold; margin-bottom:10px;">${faltantes.length} registros del histórico no están en Physis:</p>` +
-      faltantes.map(r => `
+    contenedor.innerHTML = `<p style="font-weight:bold; margin-bottom:10px;">${data.totalFiltrados} registros del histórico no están en Physis${desde || hasta || vehiculo ? ' (con los filtros aplicados)' : ''}:</p>` +
+      data.registros.map(r => `
         <div style="padding:8px 0; border-bottom:1px solid #eee; font-size:0.85rem;">
           <strong>${r.fecha}</strong> — ${r.campo} — <strong>${r.vehiculo}</strong> — ${r.litrosCargados} L — $${Number(r.costo || 0).toLocaleString('es-AR')} — "${r.cisterna}"
         </div>`).join('');
+
+    if (data.totalPaginas > 1) {
+      paginacionEl.style.display = 'flex';
+      const botones = [];
+      botones.push(`<button ${data.pagina <= 1 ? 'disabled' : ''} data-pag="${data.pagina - 1}">← Anterior</button>`);
+      botones.push(`<span>Página ${data.pagina} de ${data.totalPaginas}</span>`);
+      botones.push(`<button ${data.pagina >= data.totalPaginas ? 'disabled' : ''} data-pag="${data.pagina + 1}">Siguiente →</button>`);
+      paginacionEl.innerHTML = botones.join('');
+    } else {
+      paginacionEl.style.display = 'none';
+    }
+  }
+
+  document.getElementById('btnBuscarFaltantes').addEventListener('click', () => buscarFaltantes(1));
+
+  document.getElementById('btnLimpiarFaltantes').addEventListener('click', () => {
+    document.getElementById('faltantesDesde').value = '';
+    document.getElementById('faltantesHasta').value = '';
+    document.getElementById('faltantesVehiculo').value = '';
+    document.getElementById('listaFaltantes').innerHTML = '';
+    document.getElementById('paginacionFaltantes').style.display = 'none';
+  });
+
+  document.getElementById('paginacionFaltantes').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-pag]');
+    if (!btn || btn.disabled) return;
+    buscarFaltantes(Number(btn.dataset.pag));
   });
 
   document.getElementById('btnBuscarDuplicados').addEventListener('click', async () => {
