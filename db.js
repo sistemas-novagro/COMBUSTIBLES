@@ -1,19 +1,37 @@
-import { Low } from 'lowdb';
-import { JSONFile } from 'lowdb/node';
-import path from 'path';
-
-// En tu compu guarda data.json en esta misma carpeta (comportamiento de siempre).
-// En Railway, DATA_DIR va a apuntar a la carpeta del disco persistente (ej. /data),
-// así los datos no se pierden cuando el servicio reinicia.
-const carpetaDatos = process.env.DATA_DIR || '.';
-const adapter = new JSONFile(path.join(carpetaDatos, 'data.json'));
+import { MongoClient } from 'mongodb';
 
 const defaultData = { combustible: [], saldosReferencia: {} };
-const db = new Low(adapter, defaultData);
+
+const client = new MongoClient(process.env.MONGODB_URI);
+await client.connect();
+const coleccion = client.db('novagro').collection('estado');
+
+// Este objeto imita exactamente la forma en que usábamos lowdb antes
+// (db.data.combustible, db.data.saldosReferencia, await db.read(), await db.write())
+// así que el resto de server.js no necesita cambiar nada.
+const db = {
+  data: structuredClone(defaultData),
+  async read() {
+    const doc = await coleccion.findOne({ _id: 'principal' });
+    if (doc) {
+      delete doc._id;
+      db.data = doc;
+    } else {
+      db.data = structuredClone(defaultData);
+    }
+    db.data.combustible ||= [];
+    db.data.saldosReferencia ||= {};
+  },
+  async write() {
+    await coleccion.updateOne(
+      { _id: 'principal' },
+      { $set: db.data },
+      { upsert: true }
+    );
+  },
+};
 
 await db.read();
-db.data ||= defaultData;
-db.data.saldosReferencia ||= {};
 await db.write();
 
 export default db;
